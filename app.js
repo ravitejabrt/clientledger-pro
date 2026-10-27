@@ -25,6 +25,7 @@
       businessPhone: '+91 98765 43210',
       businessEmail: 'billing@example.com',
       businessAddress: '101 Commercial Hub, Main Street',
+      lastModified: 0,
       dbProvider: 'supabase', // 'supabase' or 'bigrock'
       supabaseUrl: '',
       supabaseKey: '',
@@ -584,6 +585,10 @@ ON CONFLICT (id) DO NOTHING;`;
     if (supUrl) state.settings.supabaseUrl = supUrl.value.trim();
     if (supKey) state.settings.supabaseKey = supKey.value.trim();
     if (brUrl) state.settings.apiUrl = brUrl.value.trim();
+    state.settings.lastModified = Date.now();
+
+    supabaseClient = null; // Re-create client with new credentials
+    realtimeChannel = null;
 
     saveData();
     closeModal('cloudDatabaseModal');
@@ -591,10 +596,68 @@ ON CONFLICT (id) DO NOTHING;`;
     await checkCloudSync();
   }
 
-  async function checkCloudSync() {
-    // 1. Try Supabase first if configured
+  let realtimeChannel = null;
+
+  function subscribeToRealtime(sb) {
+    if (!sb || typeof sb.channel !== 'function') return;
+    if (realtimeChannel) return; // Already subscribed
+
+    try {
+      realtimeChannel = sb
+        .channel('clientledger_realtime_changes')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'clientledger_data', filter: 'id=eq.main_store' },
+          payload => {
+            if (payload.new && payload.new.data) {
+              const remoteData = payload.new.data;
+              const remoteTime = Number(remoteData.lastModified) || (payload.new.updated_at ? new Date(payload.new.updated_at).getTime() : 0);
+              const localTime = Number(state.settings.lastModified) || 0;
+
+              // If another device made newer changes, apply them live!
+              if (remoteTime > localTime) {
+                applyCloudData(remoteData, 'Supabase Realtime');
+                const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                updateSyncIndicator(true, `Supabase Live (${timeStr})`);
+                showToast('Database updated from cloud!');
+              }
+            }
+          }
+        )
+        .subscribe(status => {
+          if (status === 'SUBSCRIBED') {
+            console.log('Realtime live sync active with Supabase.');
+          }
+        });
+    } catch (e) {
+      console.warn('Realtime subscription error:', e);
+    }
+  }
+
+  function isLocalHost() {
+    return (
+      typeof window !== 'undefined' &&
+      window.location &&
+      (window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname === '0.0.0.0')
+    );
+  }
+
+  async function checkCloudSync(silent = false) {
     const sb = getSupabaseClient();
+    const hasBigRock = Boolean(state.settings.apiUrl || DEFAULT_BIGROCK_API_URL);
+    const hasLocalServer = isLocalHost();
+
+    if (!sb && !hasBigRock && !hasLocalServer) {
+      updateSyncIndicator(false, 'Local Storage Mode');
+      return;
+    }
+
+    // 1. Try Supabase
     if (sb) {
+      subscribeToRealtime(sb);
+
       try {
         const { data, error } = await sb
           .from('clientledger_data')
@@ -602,35 +665,53 @@ ON CONFLICT (id) DO NOTHING;`;
           .eq('id', 'main_store')
           .maybeSingle();
 
-        if (!error) {
-          cloudSyncAvailable = true;
-          updateSyncIndicator(true, 'Supabase Cloud Synced');
-          if (data && data.data && Array.isArray(data.data.clients)) {
-            state.clients = data.data.clients;
-            if (data.data.settings) {
-              state.settings = { ...state.settings, ...data.data.settings };
-            }
-            try {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(state.clients));
-              localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
-            } catch (err) {}
-            updateCurrencySymbols();
-            if (state.activeView === 'dashboard') renderDashboard();
-            else if (state.activeView === 'clients') renderClientsList();
-            else if (state.activeView === 'matrix') renderMatrixView();
-          } else if (state.clients.length > 0) {
-            // First time connection: save existing local data to cloud
-            syncToCloud();
-          }
+        if (error) {
+          console.warn('Supabase checkCloudSync error:', error);
+          if (!silent) updateSyncIndicator(false, 'Supabase Sync Error ⚠️');
           return;
         }
-      } catch (e) {
-        console.warn('Supabase sync check error:', e);
+
+        cloudSyncAvailable = true;
+
+        if (data && data.data) {
+          const remoteData = data.data;
+          const remoteTime = Number(remoteData.lastModified) || (data.updated_at ? new Date(data.updated_at).getTime() : 0);
+          const localTime = Number(state.settings.lastModified) || 0;
+
+          // Check if remote data is just an initial default placeholder
+          const remoteIsDefaultSeed = (!remoteData.clients || remoteData.clients.length === 0) &&
+                                     (!remoteData.settings || remoteData.settings.businessName === 'Business Services & Solutions' || !remoteData.settings.businessAddress);
+          const localHasCustomData = (state.clients && state.clients.length > 0) ||
+                                    (state.settings.businessName && state.settings.businessName !== 'Business Services & Solutions') ||
+                                    Boolean(state.settings.businessAddress) ||
+                                    Boolean(state.settings.businessPhone && state.settings.businessPhone !== '+91 98765 43210');
+
+          if (localHasCustomData && (remoteIsDefaultSeed || localTime > remoteTime)) {
+            // Local data is newer or has customized data while cloud has default seed!
+            // Push our fresh local data to the cloud so cloud is up to date!
+            console.log('Local data is newer or cloud has default seed. Pushing local -> Supabase.');
+            await syncToCloud({ force: true });
+          } else if (remoteTime > localTime && remoteData.clients) {
+            // Remote data is newer: apply cloud data
+            applyCloudData(remoteData, 'Supabase');
+          }
+        } else {
+          // Cloud has no data row at all: push local to cloud
+          await syncToCloud({ force: true });
+        }
+
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        updateSyncIndicator(true, `Supabase Synced (${timeStr})`);
+        return;
+      } catch (err) {
+        console.warn('Supabase check error:', err);
+        if (!silent) updateSyncIndicator(false, 'Supabase Offline ⚠️');
+        return;
       }
     }
 
-    // 2. Fallback to BigRock PHP API if configured
-    if (typeof fetch === 'function') {
+    // 2. Try BigRock PHP API
+    if (hasBigRock && typeof fetch === 'function') {
       try {
         const url = getApiEndpoint('load');
         const res = await fetch(url);
@@ -638,82 +719,262 @@ ON CONFLICT (id) DO NOTHING;`;
           const json = await res.json();
           if (json.success) {
             cloudSyncAvailable = true;
-            updateSyncIndicator(true, 'BigRock Cloud Synced');
-            if (json.data && json.data.clients && Array.isArray(json.data.clients)) {
-              state.clients = json.data.clients;
-              if (json.data.settings) {
-                state.settings = { ...state.settings, ...json.data.settings };
+            if (json.data) {
+              const remoteData = json.data;
+              const remoteTime = Number(remoteData.lastModified) || 0;
+              const localTime = Number(state.settings.lastModified) || 0;
+
+              const remoteIsDefaultSeed = (!remoteData.clients || remoteData.clients.length === 0) &&
+                                         (!remoteData.settings || remoteData.settings.businessName === 'Business Services & Solutions');
+              const localHasCustomData = (state.clients && state.clients.length > 0) ||
+                                        (state.settings.businessName && state.settings.businessName !== 'Business Services & Solutions');
+
+              if (localHasCustomData && (remoteIsDefaultSeed || localTime > remoteTime)) {
+                await syncToCloud({ force: true });
+              } else if (remoteTime > localTime && remoteData.clients) {
+                applyCloudData(remoteData, 'BigRock');
               }
-              try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(state.clients));
-                localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
-              } catch (err) {}
-              updateCurrencySymbols();
-              if (state.activeView === 'dashboard') renderDashboard();
-              else if (state.activeView === 'clients') renderClientsList();
-              else if (state.activeView === 'matrix') renderMatrixView();
-            } else if (state.clients.length > 0) {
-              syncToCloud();
+            } else {
+              await syncToCloud({ force: true });
             }
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            updateSyncIndicator(true, `BigRock Synced (${timeStr})`);
             return;
           }
         }
       } catch (e) {
-        // Silent fallback to local storage
+        console.warn('BigRock check error:', e);
+      }
+    }
+
+    // 3. Try Local Node.js Server Database (database.json) when running on localhost
+    if (hasLocalServer && typeof fetch === 'function') {
+      try {
+        const res = await fetch('/api.php?action=load');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success) {
+            cloudSyncAvailable = true;
+            if (json.data) {
+              const remoteData = json.data;
+              const remoteTime = Number(remoteData.lastModified) || 0;
+              const localTime = Number(state.settings.lastModified) || 0;
+
+              if (localTime > remoteTime) {
+                await syncToCloud({ force: true });
+              } else if (remoteTime > localTime && remoteData.clients) {
+                applyCloudData(remoteData, 'Server DB');
+              }
+            } else {
+              // Server has no database.json yet, sync local state to create database.json
+              await syncToCloud({ force: true });
+            }
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            updateSyncIndicator(true, `Server DB Synced (${timeStr})`);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('Local server check error:', e);
       }
     }
 
     cloudSyncAvailable = false;
-    updateSyncIndicator(false);
+    updateSyncIndicator(false, 'Local Storage Mode');
   }
 
-  async function syncToCloud() {
-    // 1. Try Supabase
+  function applyCloudData(remoteData, sourceName) {
+    if (!remoteData) return;
+    if (Array.isArray(remoteData.clients)) {
+      state.clients = remoteData.clients;
+    }
+    if (remoteData.settings && typeof remoteData.settings === 'object') {
+      // Preserve local connection credentials so they are never lost
+      const localSupUrl = state.settings.supabaseUrl;
+      const localSupKey = state.settings.supabaseKey;
+      const localApiUrl = state.settings.apiUrl;
+      const localProvider = state.settings.dbProvider;
+
+      // Preserve local custom business details if remote has only default seed or empty
+      const localBizName = state.settings.businessName;
+      const localBizAddress = state.settings.businessAddress;
+      const localBizPhone = state.settings.businessPhone;
+      const localBizEmail = state.settings.businessEmail;
+
+      state.settings = { ...state.settings, ...remoteData.settings };
+
+      if (!state.settings.supabaseUrl && localSupUrl) state.settings.supabaseUrl = localSupUrl;
+      if (!state.settings.supabaseKey && localSupKey) state.settings.supabaseKey = localSupKey;
+      if (!state.settings.apiUrl && localApiUrl) state.settings.apiUrl = localApiUrl;
+      if (!state.settings.dbProvider && localProvider) state.settings.dbProvider = localProvider;
+
+      // If remote businessName was default and local had custom, preserve local
+      if (remoteData.settings.businessName === 'Business Services & Solutions' &&
+          localBizName && localBizName !== 'Business Services & Solutions') {
+        state.settings.businessName = localBizName;
+      }
+      if (!remoteData.settings.businessAddress && localBizAddress) {
+        state.settings.businessAddress = localBizAddress;
+      }
+      if (!remoteData.settings.businessPhone && localBizPhone) {
+        state.settings.businessPhone = localBizPhone;
+      }
+      if (!remoteData.settings.businessEmail && localBizEmail) {
+        state.settings.businessEmail = localBizEmail;
+      }
+    }
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.clients));
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+    } catch (err) {}
+
+    updateCurrencySymbols();
+    updateBusinessProfileBanner();
+
+    if (state.activeView === 'dashboard') renderDashboard();
+    else if (state.activeView === 'clients') renderClientsList();
+    else if (state.activeView === 'client-detail' && state.activeClientId) renderClientDetail(state.activeClientId);
+    else if (state.activeView === 'matrix') renderMatrixView();
+  }
+
+  async function syncToCloud(options = {}) {
     const sb = getSupabaseClient();
+    const hasBigRock = Boolean(state.settings.apiUrl || DEFAULT_BIGROCK_API_URL);
+    const hasLocalServer = isLocalHost();
+
+    if (!sb && !hasBigRock && !hasLocalServer) {
+      updateSyncIndicator(false, 'Local Storage Mode');
+      return { success: true, provider: 'local_storage' };
+    }
+
+    updateSyncIndicator(true, 'Syncing...', true);
+
+    const payload = {
+      clients: state.clients,
+      settings: state.settings,
+      lastModified: state.settings.lastModified || Date.now(),
+      version: 1,
+    };
+
+    // 1. Supabase Sync (priority if credentials provided)
     if (sb) {
       try {
-        await sb.from('clientledger_data').upsert({
+        const { error } = await sb.from('clientledger_data').upsert({
           id: 'main_store',
-          data: {
-            clients: state.clients,
-            settings: state.settings,
-          },
+          data: payload,
           updated_at: new Date().toISOString(),
-        });
-        return;
-      } catch (e) {
-        console.warn('Supabase syncToCloud error:', e);
+        }, { onConflict: 'id' });
+
+        if (error) {
+          console.error('Supabase syncToCloud error:', error);
+          const errDetail = error.message || error.details || error.code || 'Sync failed';
+          updateSyncIndicator(false, 'Supabase Sync Error ⚠️');
+          return { success: false, provider: 'supabase', error: errDetail };
+        }
+
+        cloudSyncAvailable = true;
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        updateSyncIndicator(true, `Supabase Synced (${timeStr})`);
+        return { success: true, provider: 'supabase', time: timeStr };
+      } catch (err) {
+        console.warn('Supabase syncToCloud exception:', err);
+        updateSyncIndicator(false, 'Supabase Offline ⚠️');
+        return { success: false, provider: 'supabase', error: err.message || 'Offline' };
       }
     }
 
-    // 2. Try BigRock PHP API
-    if (cloudSyncAvailable && typeof fetch === 'function') {
+    // 2. BigRock PHP API Sync (priority if API URL provided)
+    if (hasBigRock && typeof fetch === 'function') {
       try {
         const url = getApiEndpoint('save');
-        await fetch(url, {
+        const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clients: state.clients,
-            settings: state.settings,
-          }),
+          body: JSON.stringify(payload),
         });
+
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success) {
+            cloudSyncAvailable = true;
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            updateSyncIndicator(true, `BigRock Synced (${timeStr})`);
+            return { success: true, provider: 'bigrock', time: timeStr };
+          }
+          throw new Error(json.error || 'BigRock server rejected save');
+        }
+        throw new Error(`HTTP ${res.status}`);
       } catch (e) {
-        console.warn('BigRock syncToCloud error:', e);
+        console.warn('BigRock sync exception:', e);
+        updateSyncIndicator(false, 'BigRock Offline ⚠️');
+        return { success: false, provider: 'bigrock', error: e.message };
       }
+    }
+
+    // 3. Local Node.js Server Database Sync (database.json on localhost)
+    if (hasLocalServer && typeof fetch === 'function') {
+      try {
+        const res = await fetch('/api.php?action=save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success) {
+            cloudSyncAvailable = true;
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            updateSyncIndicator(true, `Server DB Synced (${timeStr})`);
+            return { success: true, provider: 'local_server', time: timeStr };
+          }
+        }
+      } catch (e) {
+        console.warn('Local server sync exception:', e);
+      }
+    }
+
+    updateSyncIndicator(false, 'Local Storage Mode');
+    return { success: true, provider: 'local_storage' };
+  }
+
+  async function manualCloudSync() {
+    showToast('Syncing all data with database...');
+    const res = await syncToCloud({ force: true });
+    if (res && res.success) {
+      if (res.provider === 'supabase') {
+        showToast('✅ All data synced successfully to Supabase PostgreSQL!');
+      } else if (res.provider === 'bigrock') {
+        showToast('✅ All data synced successfully to BigRock MySQL!');
+      } else if (res.provider === 'local_server') {
+        showToast('✅ All data synced successfully to server database (database.json)!');
+      } else {
+        showToast('ℹ️ Data saved in Local Storage. Connect Supabase/BigRock to sync online.');
+      }
+    } else {
+      showToast(`⚠️ Database sync failed: ${res ? res.error : 'Unknown error'}`, true);
     }
   }
 
-  function updateSyncIndicator(online, label) {
+  function updateSyncIndicator(online, label, isSpinning = false) {
     const el = document.getElementById('cloud-sync-status');
     const footerEl = document.getElementById('footer-sync-status');
     const displayText = label || (online ? 'Cloud Synced' : 'Local Mode');
 
     if (el) {
-      if (online) {
+      if (isSpinning) {
+        el.className = 'hidden sm:flex items-center gap-1.5 text-[11px] bg-blue-50 text-blue-700 px-2.5 py-1.5 rounded-lg border border-blue-200 cursor-pointer transition';
+        el.innerHTML = `<span class="w-2 h-2 rounded-full bg-blue-500 animate-spin"></span><span class="font-bold">${displayText}</span>`;
+        el.title = 'Syncing data with cloud database...';
+      } else if (online) {
         el.className = 'hidden sm:flex items-center gap-1.5 text-[11px] bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg border border-emerald-200 cursor-pointer hover:bg-emerald-100 transition';
         el.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span class="font-bold">${displayText}</span>`;
         el.title = `Connected to ${displayText}. Click to view database settings.`;
+      } else if (displayText.includes('Error') || displayText.includes('Offline')) {
+        el.className = 'hidden sm:flex items-center gap-1.5 text-[11px] bg-amber-50 text-amber-800 px-2.5 py-1.5 rounded-lg border border-amber-300 cursor-pointer hover:bg-amber-100 transition';
+        el.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500"></span><span class="font-bold">${displayText}</span>`;
+        el.title = 'Click to check database connection settings.';
       } else {
         el.className = 'hidden sm:flex items-center gap-1.5 text-[11px] bg-slate-100 text-slate-600 px-2.5 py-1.5 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-200 transition';
         el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span><span class="font-medium">Local Mode</span>';
@@ -721,7 +982,57 @@ ON CONFLICT (id) DO NOTHING;`;
       }
     }
     if (footerEl) {
-      footerEl.textContent = online ? `${displayText} Active` : 'Local Storage Mode';
+      footerEl.textContent = displayText;
+    }
+  }
+
+  function updateBusinessProfileBanner() {
+    const bizNameEl = document.getElementById('dashboard-business-name');
+    const bizAddressEl = document.getElementById('dashboard-business-address');
+    const bizPhoneEl = document.getElementById('dashboard-business-phone');
+    const bizEmailEl = document.getElementById('dashboard-business-email');
+    const bizSepEl = document.getElementById('dashboard-business-separator');
+
+    const name = (state.settings.businessName || '').trim() || 'Business Services & Solutions';
+    const address = (state.settings.businessAddress || '').trim();
+    const phone = (state.settings.businessPhone || '').trim();
+    const email = (state.settings.businessEmail || '').trim();
+
+    if (bizNameEl) bizNameEl.textContent = name;
+
+    if (bizAddressEl) {
+      if (address) {
+        bizAddressEl.innerHTML = `<span>📍</span> <span>${escapeHtml(address)}</span>`;
+        bizAddressEl.classList.remove('hidden');
+      } else {
+        bizAddressEl.classList.add('hidden');
+      }
+    }
+
+    if (bizPhoneEl) {
+      if (phone) {
+        bizPhoneEl.innerHTML = `<span>📞</span> <span>${escapeHtml(phone)}</span>`;
+        bizPhoneEl.classList.remove('hidden');
+      } else {
+        bizPhoneEl.classList.add('hidden');
+      }
+    }
+
+    if (bizEmailEl) {
+      if (email) {
+        bizEmailEl.innerHTML = `<span>✉️</span> <span>${escapeHtml(email)}</span>`;
+        bizEmailEl.classList.remove('hidden');
+      } else {
+        bizEmailEl.classList.add('hidden');
+      }
+    }
+
+    if (bizSepEl) {
+      if (phone && email) {
+        bizSepEl.classList.remove('hidden');
+      } else {
+        bizSepEl.classList.add('hidden');
+      }
     }
   }
 
@@ -747,17 +1058,27 @@ ON CONFLICT (id) DO NOTHING;`;
     } catch (e) {
       console.error('Error loading settings:', e);
     }
+
+    updateBusinessProfileBanner();
   }
+
+  let syncDebounceTimer = null;
 
   function saveData() {
     try {
+      state.settings.lastModified = Date.now();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.clients));
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
-      syncToCloud();
     } catch (e) {
-      console.error('Error saving data:', e);
+      console.error('Error saving data to local storage:', e);
       showToast('Error saving data to local storage', true);
     }
+
+    // Debounce syncing to cloud so rapid changes sync efficiently
+    if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+    syncDebounceTimer = setTimeout(() => {
+      syncToCloud();
+    }, 250);
   }
 
   function seedSampleData() {
@@ -1010,15 +1331,7 @@ ON CONFLICT (id) DO NOTHING;`;
   // ==================== DASHBOARD RENDERING ====================
   function renderDashboard() {
     // Render Business Profile Header in Dashboard
-    const bizNameEl = document.getElementById('dashboard-business-name');
-    const bizAddressEl = document.getElementById('dashboard-business-address');
-    const bizPhoneEl = document.getElementById('dashboard-business-phone');
-    const bizEmailEl = document.getElementById('dashboard-business-email');
-
-    if (bizNameEl) bizNameEl.textContent = state.settings.businessName || 'Business Services & Solutions';
-    if (bizAddressEl) bizAddressEl.innerHTML = `<span>📍</span> <span>${escapeHtml(state.settings.businessAddress || '101 Commercial Hub, Main Street')}</span>`;
-    if (bizPhoneEl) bizPhoneEl.innerHTML = `📞 ${escapeHtml(state.settings.businessPhone || '+91 98765 43210')}`;
-    if (bizEmailEl) bizEmailEl.innerHTML = `✉️ ${escapeHtml(state.settings.businessEmail || 'billing@example.com')}`;
+    updateBusinessProfileBanner();
 
     let totalBilledAll = 0;
     let totalPaidAll = 0;
@@ -1908,22 +2221,64 @@ ON CONFLICT (id) DO NOTHING;`;
     openModal('editBusinessProfileModal');
   }
 
-  function handleSaveBusinessProfile(e) {
-    e.preventDefault();
-    const name = document.getElementById('business-name-input').value.trim();
-    const address = document.getElementById('business-address-input').value.trim();
-    const phone = document.getElementById('business-phone-input').value.trim();
-    const email = document.getElementById('business-email-input').value.trim();
+  async function handleSaveBusinessProfile(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const nameInput = document.getElementById('business-name-input');
+    const addressInput = document.getElementById('business-address-input');
+    const phoneInput = document.getElementById('business-phone-input');
+    const emailInput = document.getElementById('business-email-input');
+
+    const name = nameInput ? nameInput.value.trim() : '';
+    const address = addressInput ? addressInput.value.trim() : '';
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+    const email = emailInput ? emailInput.value.trim() : '';
 
     state.settings.businessName = name || 'Business Services & Solutions';
     state.settings.businessAddress = address;
     state.settings.businessPhone = phone;
     state.settings.businessEmail = email;
+    state.settings.lastModified = Date.now();
 
-    saveData();
-    closeModal('editBusinessProfileModal');
+    // 1. Immediately update visual banner on Dashboard
+    updateBusinessProfileBanner();
     renderDashboard();
-    showToast('Business details updated successfully!');
+
+    // 2. Persist to localStorage immediately
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.clients));
+    } catch (err) {
+      console.warn('LocalStorage error:', err);
+    }
+
+    // 3. Close the modal
+    closeModal('editBusinessProfileModal');
+
+    // 4. Cancel debounced timer to avoid duplicate sync
+    if (syncDebounceTimer) {
+      clearTimeout(syncDebounceTimer);
+      syncDebounceTimer = null;
+    }
+
+    // 5. Trigger immediate live sync to database
+    showToast('Saving and syncing business profile...');
+    const result = await syncToCloud({ force: true });
+
+    if (result && result.success) {
+      if (result.provider === 'supabase') {
+        showToast('✅ Business profile updated and synced to Supabase!');
+      } else if (result.provider === 'bigrock') {
+        showToast('✅ Business profile updated and synced to BigRock database!');
+      } else if (result.provider === 'local_server') {
+        showToast('✅ Business profile updated and synced to server database!');
+      } else {
+        showToast('✅ Business profile saved locally!');
+      }
+    } else if (result && !result.success) {
+      showToast(`⚠️ Saved locally, but database sync error: ${result.error || 'Check connection'}`, true);
+    } else {
+      showToast('✅ Business profile saved!');
+    }
   }
 
   function toggleSettingsDropdown(event) {
@@ -2715,6 +3070,13 @@ ON CONFLICT (id) DO NOTHING;`;
       checkCloudSync();
     }
 
+    // Background auto-sync every 15 seconds to fetch changes from other devices/tabs
+    setInterval(() => {
+      if (state.isAuthenticated && typeof checkCloudSync === 'function') {
+        checkCloudSync(true);
+      }
+    }, 15000);
+
     const allModals = [
       'addClientModal',
       'recordPaymentModal',
@@ -2805,6 +3167,9 @@ ON CONFLICT (id) DO NOTHING;`;
     exportAllToCSV,
     loadSampleData,
     clearAllData,
+    manualCloudSync,
+    syncToCloud,
+    checkCloudSync,
     get activeClientId() {
       return state.activeClientId;
     },
