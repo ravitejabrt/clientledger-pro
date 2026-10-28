@@ -40,6 +40,9 @@
   <!-- Supabase Client Library (v2) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+  <!-- Optional Shared Configuration (for all devices / GitHub Pages) -->
+  <script src="config.js"></script>
+
   <!-- Custom Styling & Print Rules -->
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -135,10 +138,21 @@
           </button>
         </form>
 
-        <div class="text-center pt-2 border-t border-slate-100">
+        <!-- Database Connection Quick Bar on Login -->
+        <div class="flex items-center justify-between text-xs px-1 pt-1 border-t border-slate-100">
+          <div id="login-db-status" class="flex items-center gap-1.5 text-[11px] text-slate-500">
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span>Checking Supabase...</span>
+          </div>
+          <button type="button" onclick="app.openCloudDatabaseModal()" class="text-[11px] font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 hover:underline">
+            <span>⚙️ Supabase Settings</span>
+          </button>
+        </div>
+
+        <div class="text-center pt-1">
           <p class="text-[11px] text-slate-400 flex items-center justify-center gap-1">
             <svg class="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-            <span>Runs locally in browser &bull; Data stored in LocalStorage</span>
+            <span>Cloud synchronized with Supabase &bull; Realtime multi-device sync</span>
           </p>
         </div>
       </div>
@@ -1374,6 +1388,6 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="app.js?v=2.4"></script>
+  <script src="app.js?v=2.5"></script>
 </body>
 </html>

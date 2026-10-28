@@ -6,11 +6,18 @@
 (function () {
   'use strict';
 
-  // Pre-configured Supabase Credentials (optional: paste here or configure via the UI)
+  // Pre-configured Supabase Credentials (dynamic from config.js or configured via UI)
   const SUPABASE_CONFIG = {
-    url: '',     // e.g. 'https://xxxxxxxx.supabase.co'
-    anonKey: '', // e.g. 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+    get url() {
+      return (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url) ? window.SUPABASE_CONFIG.url.trim() : '';
+    },
+    get anonKey() {
+      return (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.anonKey) ? window.SUPABASE_CONFIG.anonKey.trim() : '';
+    },
   };
+
+  // Flag to ensure initial pull from Supabase completes before any local push can occur
+  let hasCompletedInitialSync = false;
 
   // Default BigRock API URL (optional: paste here or configure via the UI)
   const DEFAULT_BIGROCK_API_URL = ''; // e.g. 'https://yourdomain.com/api.php'
@@ -620,6 +627,82 @@ WHERE id = 'main_store';`;
     }
   }
 
+  // ==================== SHARED SERVER CONFIGURATION ====================
+  async function loadServerConfig() {
+    if (!window.location.protocol.startsWith('http')) return;
+    try {
+      const res = await fetch('api.php?action=load', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.data && json.data.settings) {
+          const s = json.data.settings;
+          let changed = false;
+          if (!state.settings.supabaseUrl && s.supabaseUrl) {
+            state.settings.supabaseUrl = s.supabaseUrl;
+            changed = true;
+          }
+          if (!state.settings.supabaseKey && s.supabaseKey) {
+            state.settings.supabaseKey = s.supabaseKey;
+            changed = true;
+          }
+          if (!state.settings.businessName && s.businessName) {
+            state.settings.businessName = s.businessName;
+            changed = true;
+          }
+          if (!state.settings.businessPhone && s.businessPhone) {
+            state.settings.businessPhone = s.businessPhone;
+            changed = true;
+          }
+          if (!state.settings.businessEmail && s.businessEmail) {
+            state.settings.businessEmail = s.businessEmail;
+            changed = true;
+          }
+          if (!state.settings.businessAddress && s.businessAddress) {
+            state.settings.businessAddress = s.businessAddress;
+            changed = true;
+          }
+          if (changed) {
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+            updateBusinessProfileBanner();
+            updateLoginDbStatus();
+          }
+        }
+      }
+    } catch (e) {
+      // Offline or static server - ignore
+    }
+  }
+
+  async function saveSettingsToServer() {
+    if (!window.location.protocol.startsWith('http')) return;
+    try {
+      const payload = {
+        clients: state.clients || [],
+        settings: state.settings || {},
+        lastModified: Date.now(),
+        version: 1,
+      };
+      await fetch('api.php?action=save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      // Offline or static host - ignore
+    }
+  }
+
+  function updateLoginDbStatus() {
+    const el = document.getElementById('login-db-status');
+    if (!el) return;
+    const configured = isSupabaseConfigured();
+    if (configured) {
+      el.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span class="text-emerald-700 font-semibold">Supabase Connected</span>`;
+    } else {
+      el.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500"></span><span class="text-amber-700 font-medium">Supabase Not Connected</span>`;
+    }
+  }
+
   async function handleSaveCloudDb(e) {
     if (e && e.preventDefault) e.preventDefault();
     const supUrl = document.getElementById('supabase-url-input');
@@ -635,10 +718,20 @@ WHERE id = 'main_store';`;
     supabaseClient = null; // Re-create client with new credentials
     realtimeChannel = null;
 
-    saveData();
+    // Persist settings locally and to server if running.
+    // CRITICAL: DO NOT call saveData() here, because on a new device state.clients is empty!
+    // Calling saveData() would push an empty clients array and erase the Supabase database!
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+    } catch (err) {}
+    saveSettingsToServer();
+
     closeModal('cloudDatabaseModal');
-    showToast('Saving database configuration...');
-    await checkCloudSync();
+    updateLoginDbStatus();
+    showToast('Connecting to Supabase and pulling data...');
+
+    // IMMEDIATELY PULL all data from Supabase!
+    await checkCloudSync(false, { forcePull: true });
   }
 
   let realtimeChannel = null;
@@ -693,7 +786,8 @@ WHERE id = 'main_store';`;
     }
   }
 
-  async function checkCloudSync(silent = false) {
+  async function checkCloudSync(silent = false, options = {}) {
+    updateLoginDbStatus();
     const sb = getSupabaseClient();
 
     // If not connecting to database, there should NOT be any data in the project and no sync
@@ -728,23 +822,53 @@ WHERE id = 'main_store';`;
 
       if (data && data.data) {
         const remoteData = data.data;
+        const remoteClients = Array.isArray(remoteData.clients) ? remoteData.clients : [];
         const remoteTime = Number(remoteData.lastModified) || (data.updated_at ? new Date(data.updated_at).getTime() : 0);
         const localTime = Number(state.settings.lastModified) || 0;
 
-        if (localTime > remoteTime && state.clients && state.clients.length > 0) {
-          // Local has newer changes, push to Supabase
-          await syncToCloud({ force: true });
-        } else {
-          // Apply live data from Supabase
+        // Force pull conditions:
+        // 1. Explicitly requested options.forcePull
+        // 2. Initial sync not completed yet in this browser session
+        // 3. Local has 0 clients while remote has clients
+        // 4. Remote is newer or equal timestamp
+        const shouldPull = Boolean(
+          options.forcePull ||
+          !hasCompletedInitialSync ||
+          (state.clients.length === 0 && remoteClients.length > 0) ||
+          remoteTime >= localTime
+        );
+
+        if (shouldPull) {
           applyCloudData(remoteData, 'Supabase');
+          hasCompletedInitialSync = true;
+          if (!silent && remoteClients.length > 0) {
+            showToast(`✅ Synced ${remoteClients.length} client(s) from Supabase database!`);
+          }
+        } else if (localTime > remoteTime && state.clients.length > 0 && hasCompletedInitialSync) {
+          // Local genuinely has newer client edits made in this active session
+          await syncToCloud({ force: true });
+          hasCompletedInitialSync = true;
+        } else {
+          applyCloudData(remoteData, 'Supabase');
+          hasCompletedInitialSync = true;
         }
       } else {
-        // Initial clean row in Supabase: push clean structure
-        await syncToCloud({ force: true });
+        // Table row does not exist yet in Supabase
+        if (state.clients.length > 0) {
+          await syncToCloud({ force: true });
+        } else {
+          await sb.from('clientledger_data').upsert({
+            id: 'main_store',
+            data: { clients: [], settings: state.settings, lastModified: Date.now(), version: 1 },
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'id' });
+        }
+        hasCompletedInitialSync = true;
       }
 
       const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       updateSyncIndicator(true, `Supabase Synced (${timeStr})`);
+      updateLoginDbStatus();
     } catch (err) {
       console.warn('Supabase check error:', err);
       if (!silent) updateSyncIndicator(false, 'Supabase Offline ⚠️');
@@ -792,6 +916,30 @@ WHERE id = 'main_store';`;
       return { success: false, provider: 'none', error: 'Supabase database is not connected' };
     }
 
+    // CRITICAL SAFETY SHIELD: Never overwrite remote database clients with an empty array
+    // unless the user specifically and explicitly clicked "Clear All Data" (options.allowEmpty === true).
+    if ((!state.clients || state.clients.length === 0) && !options.allowEmpty) {
+      try {
+        const { data: existingRow, error: checkErr } = await sb
+          .from('clientledger_data')
+          .select('data')
+          .eq('id', 'main_store')
+          .maybeSingle();
+
+        if (!checkErr && existingRow && existingRow.data) {
+          const remoteClients = Array.isArray(existingRow.data.clients) ? existingRow.data.clients : [];
+          if (remoteClients.length > 0) {
+            console.warn(`[Supabase Shield] Local has 0 clients but remote database has ${remoteClients.length} clients! Aborting destructive push and pulling remote data instead.`);
+            applyCloudData(existingRow.data, 'Supabase Remote Recovery');
+            hasCompletedInitialSync = true;
+            return { success: true, provider: 'supabase', pulled: true, count: remoteClients.length };
+          }
+        }
+      } catch (e) {
+        console.warn('[Supabase Shield] Error checking remote data:', e);
+      }
+    }
+
     updateSyncIndicator(true, 'Syncing...', true);
 
     const payload = {
@@ -816,8 +964,10 @@ WHERE id = 'main_store';`;
       }
 
       cloudSyncAvailable = true;
+      hasCompletedInitialSync = true;
       const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       updateSyncIndicator(true, `Supabase Synced (${timeStr})`);
+      saveSettingsToServer(); // Keep database.json updated for local server
       return { success: true, provider: 'supabase', time: timeStr };
     } catch (err) {
       console.warn('Supabase syncToCloud exception:', err);
@@ -919,13 +1069,28 @@ WHERE id = 'main_store';`;
   }
 
   function loadData() {
-    // When Supabase is not configured, there should not be any data in the project
-    if (!isSupabaseConfigured()) {
-      state.clients = [];
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch (e) {}
-    } else {
+    // 1. ALWAYS load settings FIRST so that Supabase credentials and preferences are available!
+    try {
+      const rawSettings = localStorage.getItem(SETTINGS_KEY);
+      if (rawSettings) {
+        state.settings = { ...state.settings, ...JSON.parse(rawSettings) };
+      }
+    } catch (e) {
+      console.error('Error loading settings:', e);
+    }
+
+    // Merge window.SUPABASE_CONFIG if provided via config.js
+    if (window.SUPABASE_CONFIG) {
+      if (!state.settings.supabaseUrl && window.SUPABASE_CONFIG.url) {
+        state.settings.supabaseUrl = window.SUPABASE_CONFIG.url.trim();
+      }
+      if (!state.settings.supabaseKey && window.SUPABASE_CONFIG.anonKey) {
+        state.settings.supabaseKey = window.SUPABASE_CONFIG.anonKey.trim();
+      }
+    }
+
+    // 2. Load clients from localStorage
+    if (isSupabaseConfigured()) {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
@@ -937,23 +1102,18 @@ WHERE id = 'main_store';`;
         console.error('Error loading data:', e);
         state.clients = [];
       }
-    }
-
-    try {
-      const rawSettings = localStorage.getItem(SETTINGS_KEY);
-      if (rawSettings) {
-        state.settings = { ...state.settings, ...JSON.parse(rawSettings) };
-      }
-    } catch (e) {
-      console.error('Error loading settings:', e);
+    } else {
+      // Supabase is not configured yet. Keep clients empty until connected
+      state.clients = [];
     }
 
     updateBusinessProfileBanner();
+    updateLoginDbStatus();
   }
 
   let syncDebounceTimer = null;
 
-  async function saveData(immediate = true) {
+  async function saveData(immediate = true, options = {}) {
     try {
       state.settings.lastModified = Date.now();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.clients));
@@ -971,11 +1131,11 @@ WHERE id = 'main_store';`;
 
     if (immediate) {
       // INSTANT SYNC: Immediately push all updated data to Supabase/cloud database without delay
-      return await syncToCloud({ force: true });
+      return await syncToCloud(options);
     } else {
       // Debounce only when specifically requested
       syncDebounceTimer = setTimeout(() => {
-        syncToCloud({ force: true });
+        syncToCloud(options);
       }, 150);
     }
   }
@@ -2653,7 +2813,7 @@ WHERE id = 'main_store';`;
     if (confirm('CAUTION: This will delete ALL clients, monthly fees, and payment history! Are you sure?')) {
       if (confirm('Please confirm once more. Export a backup first if needed! Delete everything?')) {
         state.clients = [];
-        saveData();
+        saveData(true, { allowEmpty: true });
         showToast('All client data cleared');
         showView('dashboard');
       }
@@ -2740,8 +2900,9 @@ WHERE id = 'main_store';`;
       loadData();
       updateCurrencySymbols();
       showView('dashboard');
-      checkCloudSync();
-      showToast('Welcome back, Rahul!');
+      showToast('Welcome back, Rahul! Connecting database...');
+      // CRITICAL: Pull latest data from Supabase on login!
+      checkCloudSync(false, { forcePull: true });
     } else {
       if (errBox) {
         errBox.classList.remove('hidden');
@@ -2795,13 +2956,19 @@ WHERE id = 'main_store';`;
   }
 
   // ==================== APP INITIALIZATION ====================
-  function init() {
+  async function init() {
+    loadData();
+    updateCurrencySymbols();
+    await loadServerConfig();
+    updateLoginDbStatus();
+
     const isAuth = checkAuth();
     if (isAuth) {
-      loadData();
-      updateCurrencySymbols();
+      showMainApp();
       showView('dashboard');
-      checkCloudSync();
+      checkCloudSync(false, { forcePull: true });
+    } else {
+      showLoginScreen();
     }
 
     // Background auto-sync every 10 seconds to fetch changes from other devices/tabs

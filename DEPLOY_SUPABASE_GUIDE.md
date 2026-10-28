@@ -161,18 +161,18 @@ There are **two ways** to connect your GitHub application to Supabase:
 
 ---
 
-### Method B: Pre-configured in Code (Recommended for Multi-user Access)
-If you want anyone opening the GitHub link to connect to your Supabase database automatically without typing keys into the popup:
+### Method B: Pre-configured in `config.js` (Recommended for Multi-Device & GitHub Pages)
+If you want every device, browser, or team member opening your website to connect to your Supabase database automatically without typing keys on every browser:
 
-1. Open [**`app.js`**](file:///d:/BRT%20Application/Rahul%202.0/app.js#L9-L13) on your computer.
-2. Put your keys inside `SUPABASE_CONFIG`:
+1. Open [**`config.js`**](file:///d:/BRT%20Application/Rahul%202.0/config.js) on your computer.
+2. Put your keys inside `window.SUPABASE_CONFIG`:
    ```javascript
-   const SUPABASE_CONFIG = {
+   window.SUPABASE_CONFIG = {
      url: 'https://abcdefghijklm.supabase.co',
      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ey...',
    };
    ```
-3. Push the file to GitHub. Now, whenever you or anyone opens the website, it will immediately connect and sync to your Supabase database!
+3. Push `config.js` to GitHub. Now, whenever you or anyone logs in from any browser or phone, all client records and payment history sync down automatically from Supabase!
 
 ---
 
@@ -185,7 +185,7 @@ Open PowerShell in `D:\BRT Application\Rahul 2.0` and run:
 git init
 
 # 2. Add files
-git add index.html app.js styles.css supabase_schema.sql README.md
+git add index.html app.js config.js styles.css supabase_schema.sql README.md DEPLOY_SUPABASE_GUIDE.md
 
 # 3. Commit
 git commit -m "Deploy ClientLedger Pro with Supabase database"
