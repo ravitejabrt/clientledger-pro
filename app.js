@@ -466,9 +466,54 @@ TO anon, authenticated
 USING (true)
 WITH CHECK (true);
 
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.clientledger_data;
+  END IF;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
 INSERT INTO public.clientledger_data (id, data)
 VALUES ('main_store', '{"clients":[],"settings":{"currency":"₹","businessName":"Business Services & Solutions"}}'::jsonb)
-ON CONFLICT (id) DO NOTHING;`;
+ON CONFLICT (id) DO NOTHING;
+
+-- Helper views for Supabase Table Editor
+CREATE OR REPLACE VIEW public.v_clients AS
+SELECT 
+    c->>'id' AS client_id,
+    c->>'name' AS client_name,
+    c->>'businessName' AS business_name,
+    c->>'phone' AS phone,
+    c->>'email' AS email,
+    COALESCE((c->>'hasGst')::boolean, false) AS has_gst,
+    c->>'gstNumber' AS gst_number,
+    c->>'billingCycle' AS billing_cycle,
+    COALESCE((c->>'fixedMonthlyAmount')::numeric, 0) AS fixed_monthly_fee,
+    COALESCE((c->>'extraFee')::numeric, 0) AS extra_fee,
+    c->>'startMonth' AS start_month,
+    c->>'status' AS status,
+    jsonb_array_length(COALESCE(c->'payments', '[]'::jsonb)) AS payments_count
+FROM public.clientledger_data,
+     jsonb_array_elements(COALESCE(data->'clients', '[]'::jsonb)) AS c
+WHERE id = 'main_store';
+
+CREATE OR REPLACE VIEW public.v_payments AS
+SELECT 
+    p->>'id' AS payment_id,
+    c->>'name' AS client_name,
+    COALESCE((p->>'amount')::numeric, 0) AS amount_paid,
+    COALESCE((p->>'discount')::numeric, 0) AS settlement_discount,
+    p->>'discountNote' AS discount_note,
+    p->>'date' AS payment_date,
+    p->>'method' AS payment_method,
+    p->>'reference' AS reference,
+    p->>'note' AS note
+FROM public.clientledger_data,
+     jsonb_array_elements(COALESCE(data->'clients', '[]'::jsonb)) AS c,
+     jsonb_array_elements(COALESCE(c->'payments', '[]'::jsonb)) AS p
+WHERE id = 'main_store';`;
 
   function copySupabaseSql() {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -617,7 +662,7 @@ ON CONFLICT (id) DO NOTHING;`;
               // If another device made newer changes, apply them live!
               if (remoteTime > localTime) {
                 applyCloudData(remoteData, 'Supabase Realtime');
-                const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 updateSyncIndicator(true, `Supabase Live (${timeStr})`);
                 showToast('Database updated from cloud!');
               }
@@ -700,7 +745,7 @@ ON CONFLICT (id) DO NOTHING;`;
           await syncToCloud({ force: true });
         }
 
-        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         updateSyncIndicator(true, `Supabase Synced (${timeStr})`);
         return;
       } catch (err) {
@@ -737,7 +782,7 @@ ON CONFLICT (id) DO NOTHING;`;
             } else {
               await syncToCloud({ force: true });
             }
-            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             updateSyncIndicator(true, `BigRock Synced (${timeStr})`);
             return;
           }
@@ -769,7 +814,7 @@ ON CONFLICT (id) DO NOTHING;`;
               // Server has no database.json yet, sync local state to create database.json
               await syncToCloud({ force: true });
             }
-            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             updateSyncIndicator(true, `Server DB Synced (${timeStr})`);
             return;
           }
@@ -874,7 +919,7 @@ ON CONFLICT (id) DO NOTHING;`;
         }
 
         cloudSyncAvailable = true;
-        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         updateSyncIndicator(true, `Supabase Synced (${timeStr})`);
         return { success: true, provider: 'supabase', time: timeStr };
       } catch (err) {
@@ -898,7 +943,7 @@ ON CONFLICT (id) DO NOTHING;`;
           const json = await res.json();
           if (json.success) {
             cloudSyncAvailable = true;
-            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             updateSyncIndicator(true, `BigRock Synced (${timeStr})`);
             return { success: true, provider: 'bigrock', time: timeStr };
           }
@@ -925,7 +970,7 @@ ON CONFLICT (id) DO NOTHING;`;
           const json = await res.json();
           if (json.success) {
             cloudSyncAvailable = true;
-            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             updateSyncIndicator(true, `Server DB Synced (${timeStr})`);
             return { success: true, provider: 'local_server', time: timeStr };
           }
@@ -1064,7 +1109,7 @@ ON CONFLICT (id) DO NOTHING;`;
 
   let syncDebounceTimer = null;
 
-  function saveData() {
+  async function saveData(immediate = true) {
     try {
       state.settings.lastModified = Date.now();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.clients));
@@ -1074,11 +1119,21 @@ ON CONFLICT (id) DO NOTHING;`;
       showToast('Error saving data to local storage', true);
     }
 
-    // Debounce syncing to cloud so rapid changes sync efficiently
-    if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
-    syncDebounceTimer = setTimeout(() => {
-      syncToCloud();
-    }, 250);
+    // Cancel any pending timer
+    if (syncDebounceTimer) {
+      clearTimeout(syncDebounceTimer);
+      syncDebounceTimer = null;
+    }
+
+    if (immediate) {
+      // INSTANT SYNC: Immediately push all updated data to Supabase/cloud database without delay
+      return await syncToCloud({ force: true });
+    } else {
+      // Debounce only when specifically requested
+      syncDebounceTimer = setTimeout(() => {
+        syncToCloud({ force: true });
+      }, 150);
+    }
   }
 
   function seedSampleData() {
@@ -3070,12 +3125,12 @@ ON CONFLICT (id) DO NOTHING;`;
       checkCloudSync();
     }
 
-    // Background auto-sync every 15 seconds to fetch changes from other devices/tabs
+    // Background auto-sync every 10 seconds to fetch changes from other devices/tabs
     setInterval(() => {
       if (state.isAuthenticated && typeof checkCloudSync === 'function') {
         checkCloudSync(true);
       }
-    }, 15000);
+    }, 10000);
 
     const allModals = [
       'addClientModal',
