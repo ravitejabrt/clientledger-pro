@@ -21,12 +21,12 @@
     clients: [],
     settings: {
       currency: '₹',
-      businessName: 'Business Services & Solutions',
-      businessPhone: '+91 98765 43210',
-      businessEmail: 'billing@example.com',
-      businessAddress: '101 Commercial Hub, Main Street',
+      businessName: '',
+      businessPhone: '',
+      businessEmail: '',
+      businessAddress: '',
       lastModified: 0,
-      dbProvider: 'supabase', // 'supabase' or 'bigrock'
+      dbProvider: 'supabase',
       supabaseUrl: '',
       supabaseKey: '',
       apiUrl: '',
@@ -476,7 +476,7 @@ EXCEPTION
 END $$;
 
 INSERT INTO public.clientledger_data (id, data)
-VALUES ('main_store', '{"clients":[],"settings":{"currency":"₹","businessName":"Business Services & Solutions"}}'::jsonb)
+VALUES ('main_store', '{"clients":[],"settings":{"currency":"₹","businessName":""}}'::jsonb)
 ON CONFLICT (id) DO NOTHING;
 
 -- Helper views for Supabase Table Editor
@@ -679,194 +679,94 @@ WHERE id = 'main_store';`;
     }
   }
 
-  function isLocalHost() {
-    return (
-      typeof window !== 'undefined' &&
-      window.location &&
-      (window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        window.location.hostname === '0.0.0.0')
-    );
+  function isSupabaseConfigured() {
+    const url = (state.settings.supabaseUrl || SUPABASE_CONFIG.url || '').trim();
+    const key = (state.settings.supabaseKey || SUPABASE_CONFIG.anonKey || '').trim();
+    return Boolean(url && key);
+  }
+
+  function updateSupabaseConnectBanner(show) {
+    const banner = document.getElementById('supabase-connect-banner');
+    if (banner) {
+      if (show) banner.classList.remove('hidden');
+      else banner.classList.add('hidden');
+    }
   }
 
   async function checkCloudSync(silent = false) {
     const sb = getSupabaseClient();
-    const hasBigRock = Boolean(state.settings.apiUrl || DEFAULT_BIGROCK_API_URL);
-    const hasLocalServer = isLocalHost();
 
-    if (!sb && !hasBigRock && !hasLocalServer) {
-      updateSyncIndicator(false, 'Local Storage Mode');
+    // If not connecting to database, there should NOT be any data in the project and no sync
+    if (!sb) {
+      cloudSyncAvailable = false;
+      state.clients = [];
+      updateSyncIndicator(false, 'Supabase Not Connected');
+      updateSupabaseConnectBanner(true);
+      if (state.activeView === 'dashboard') renderDashboard();
+      else if (state.activeView === 'clients') renderClientsList();
+      else if (state.activeView === 'matrix') renderMatrixView();
       return;
     }
 
-    // 1. Try Supabase
-    if (sb) {
-      subscribeToRealtime(sb);
+    updateSupabaseConnectBanner(false);
+    subscribeToRealtime(sb);
 
-      try {
-        const { data, error } = await sb
-          .from('clientledger_data')
-          .select('*')
-          .eq('id', 'main_store')
-          .maybeSingle();
+    try {
+      const { data, error } = await sb
+        .from('clientledger_data')
+        .select('*')
+        .eq('id', 'main_store')
+        .maybeSingle();
 
-        if (error) {
-          console.warn('Supabase checkCloudSync error:', error);
-          if (!silent) updateSyncIndicator(false, 'Supabase Sync Error ⚠️');
-          return;
-        }
+      if (error) {
+        console.warn('Supabase checkCloudSync error:', error);
+        if (!silent) updateSyncIndicator(false, 'Supabase Sync Error ⚠️');
+        return;
+      }
 
-        cloudSyncAvailable = true;
+      cloudSyncAvailable = true;
 
-        if (data && data.data) {
-          const remoteData = data.data;
-          const remoteTime = Number(remoteData.lastModified) || (data.updated_at ? new Date(data.updated_at).getTime() : 0);
-          const localTime = Number(state.settings.lastModified) || 0;
+      if (data && data.data) {
+        const remoteData = data.data;
+        const remoteTime = Number(remoteData.lastModified) || (data.updated_at ? new Date(data.updated_at).getTime() : 0);
+        const localTime = Number(state.settings.lastModified) || 0;
 
-          // Check if remote data is just an initial default placeholder
-          const remoteIsDefaultSeed = (!remoteData.clients || remoteData.clients.length === 0) &&
-                                     (!remoteData.settings || remoteData.settings.businessName === 'Business Services & Solutions' || !remoteData.settings.businessAddress);
-          const localHasCustomData = (state.clients && state.clients.length > 0) ||
-                                    (state.settings.businessName && state.settings.businessName !== 'Business Services & Solutions') ||
-                                    Boolean(state.settings.businessAddress) ||
-                                    Boolean(state.settings.businessPhone && state.settings.businessPhone !== '+91 98765 43210');
-
-          if (localHasCustomData && (remoteIsDefaultSeed || localTime > remoteTime)) {
-            // Local data is newer or has customized data while cloud has default seed!
-            // Push our fresh local data to the cloud so cloud is up to date!
-            console.log('Local data is newer or cloud has default seed. Pushing local -> Supabase.');
-            await syncToCloud({ force: true });
-          } else if (remoteTime > localTime && remoteData.clients) {
-            // Remote data is newer: apply cloud data
-            applyCloudData(remoteData, 'Supabase');
-          }
-        } else {
-          // Cloud has no data row at all: push local to cloud
+        if (localTime > remoteTime && state.clients && state.clients.length > 0) {
+          // Local has newer changes, push to Supabase
           await syncToCloud({ force: true });
+        } else {
+          // Apply live data from Supabase
+          applyCloudData(remoteData, 'Supabase');
         }
-
-        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        updateSyncIndicator(true, `Supabase Synced (${timeStr})`);
-        return;
-      } catch (err) {
-        console.warn('Supabase check error:', err);
-        if (!silent) updateSyncIndicator(false, 'Supabase Offline ⚠️');
-        return;
+      } else {
+        // Initial clean row in Supabase: push clean structure
+        await syncToCloud({ force: true });
       }
+
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      updateSyncIndicator(true, `Supabase Synced (${timeStr})`);
+    } catch (err) {
+      console.warn('Supabase check error:', err);
+      if (!silent) updateSyncIndicator(false, 'Supabase Offline ⚠️');
     }
-
-    // 2. Try BigRock PHP API
-    if (hasBigRock && typeof fetch === 'function') {
-      try {
-        const url = getApiEndpoint('load');
-        const res = await fetch(url);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success) {
-            cloudSyncAvailable = true;
-            if (json.data) {
-              const remoteData = json.data;
-              const remoteTime = Number(remoteData.lastModified) || 0;
-              const localTime = Number(state.settings.lastModified) || 0;
-
-              const remoteIsDefaultSeed = (!remoteData.clients || remoteData.clients.length === 0) &&
-                                         (!remoteData.settings || remoteData.settings.businessName === 'Business Services & Solutions');
-              const localHasCustomData = (state.clients && state.clients.length > 0) ||
-                                        (state.settings.businessName && state.settings.businessName !== 'Business Services & Solutions');
-
-              if (localHasCustomData && (remoteIsDefaultSeed || localTime > remoteTime)) {
-                await syncToCloud({ force: true });
-              } else if (remoteTime > localTime && remoteData.clients) {
-                applyCloudData(remoteData, 'BigRock');
-              }
-            } else {
-              await syncToCloud({ force: true });
-            }
-            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            updateSyncIndicator(true, `BigRock Synced (${timeStr})`);
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn('BigRock check error:', e);
-      }
-    }
-
-    // 3. Try Local Node.js Server Database (database.json) when running on localhost
-    if (hasLocalServer && typeof fetch === 'function') {
-      try {
-        const res = await fetch('/api.php?action=load');
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success) {
-            cloudSyncAvailable = true;
-            if (json.data) {
-              const remoteData = json.data;
-              const remoteTime = Number(remoteData.lastModified) || 0;
-              const localTime = Number(state.settings.lastModified) || 0;
-
-              if (localTime > remoteTime) {
-                await syncToCloud({ force: true });
-              } else if (remoteTime > localTime && remoteData.clients) {
-                applyCloudData(remoteData, 'Server DB');
-              }
-            } else {
-              // Server has no database.json yet, sync local state to create database.json
-              await syncToCloud({ force: true });
-            }
-            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            updateSyncIndicator(true, `Server DB Synced (${timeStr})`);
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn('Local server check error:', e);
-      }
-    }
-
-    cloudSyncAvailable = false;
-    updateSyncIndicator(false, 'Local Storage Mode');
   }
 
   function applyCloudData(remoteData, sourceName) {
     if (!remoteData) return;
     if (Array.isArray(remoteData.clients)) {
       state.clients = remoteData.clients;
+    } else {
+      state.clients = [];
     }
+
     if (remoteData.settings && typeof remoteData.settings === 'object') {
-      // Preserve local connection credentials so they are never lost
       const localSupUrl = state.settings.supabaseUrl;
       const localSupKey = state.settings.supabaseKey;
-      const localApiUrl = state.settings.apiUrl;
-      const localProvider = state.settings.dbProvider;
-
-      // Preserve local custom business details if remote has only default seed or empty
-      const localBizName = state.settings.businessName;
-      const localBizAddress = state.settings.businessAddress;
-      const localBizPhone = state.settings.businessPhone;
-      const localBizEmail = state.settings.businessEmail;
 
       state.settings = { ...state.settings, ...remoteData.settings };
 
       if (!state.settings.supabaseUrl && localSupUrl) state.settings.supabaseUrl = localSupUrl;
       if (!state.settings.supabaseKey && localSupKey) state.settings.supabaseKey = localSupKey;
-      if (!state.settings.apiUrl && localApiUrl) state.settings.apiUrl = localApiUrl;
-      if (!state.settings.dbProvider && localProvider) state.settings.dbProvider = localProvider;
-
-      // If remote businessName was default and local had custom, preserve local
-      if (remoteData.settings.businessName === 'Business Services & Solutions' &&
-          localBizName && localBizName !== 'Business Services & Solutions') {
-        state.settings.businessName = localBizName;
-      }
-      if (!remoteData.settings.businessAddress && localBizAddress) {
-        state.settings.businessAddress = localBizAddress;
-      }
-      if (!remoteData.settings.businessPhone && localBizPhone) {
-        state.settings.businessPhone = localBizPhone;
-      }
-      if (!remoteData.settings.businessEmail && localBizEmail) {
-        state.settings.businessEmail = localBizEmail;
-      }
     }
 
     try {
@@ -885,12 +785,11 @@ WHERE id = 'main_store';`;
 
   async function syncToCloud(options = {}) {
     const sb = getSupabaseClient();
-    const hasBigRock = Boolean(state.settings.apiUrl || DEFAULT_BIGROCK_API_URL);
-    const hasLocalServer = isLocalHost();
 
-    if (!sb && !hasBigRock && !hasLocalServer) {
-      updateSyncIndicator(false, 'Local Storage Mode');
-      return { success: true, provider: 'local_storage' };
+    // If it is not connecting to database, then there should not be any data sync
+    if (!sb) {
+      updateSyncIndicator(false, 'Supabase Not Connected');
+      return { success: false, provider: 'none', error: 'Supabase database is not connected' };
     }
 
     updateSyncIndicator(true, 'Syncing...', true);
@@ -902,101 +801,43 @@ WHERE id = 'main_store';`;
       version: 1,
     };
 
-    // 1. Supabase Sync (priority if credentials provided)
-    if (sb) {
-      try {
-        const { error } = await sb.from('clientledger_data').upsert({
-          id: 'main_store',
-          data: payload,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'id' });
+    try {
+      const { error } = await sb.from('clientledger_data').upsert({
+        id: 'main_store',
+        data: payload,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
 
-        if (error) {
-          console.error('Supabase syncToCloud error:', error);
-          const errDetail = error.message || error.details || error.code || 'Sync failed';
-          updateSyncIndicator(false, 'Supabase Sync Error ⚠️');
-          return { success: false, provider: 'supabase', error: errDetail };
-        }
-
-        cloudSyncAvailable = true;
-        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        updateSyncIndicator(true, `Supabase Synced (${timeStr})`);
-        return { success: true, provider: 'supabase', time: timeStr };
-      } catch (err) {
-        console.warn('Supabase syncToCloud exception:', err);
-        updateSyncIndicator(false, 'Supabase Offline ⚠️');
-        return { success: false, provider: 'supabase', error: err.message || 'Offline' };
+      if (error) {
+        console.error('Supabase syncToCloud error:', error);
+        const errDetail = error.message || error.details || error.code || 'Sync failed';
+        updateSyncIndicator(false, 'Supabase Sync Error ⚠️');
+        return { success: false, provider: 'supabase', error: errDetail };
       }
+
+      cloudSyncAvailable = true;
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      updateSyncIndicator(true, `Supabase Synced (${timeStr})`);
+      return { success: true, provider: 'supabase', time: timeStr };
+    } catch (err) {
+      console.warn('Supabase syncToCloud exception:', err);
+      updateSyncIndicator(false, 'Supabase Offline ⚠️');
+      return { success: false, provider: 'supabase', error: err.message || 'Offline' };
     }
-
-    // 2. BigRock PHP API Sync (priority if API URL provided)
-    if (hasBigRock && typeof fetch === 'function') {
-      try {
-        const url = getApiEndpoint('save');
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success) {
-            cloudSyncAvailable = true;
-            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            updateSyncIndicator(true, `BigRock Synced (${timeStr})`);
-            return { success: true, provider: 'bigrock', time: timeStr };
-          }
-          throw new Error(json.error || 'BigRock server rejected save');
-        }
-        throw new Error(`HTTP ${res.status}`);
-      } catch (e) {
-        console.warn('BigRock sync exception:', e);
-        updateSyncIndicator(false, 'BigRock Offline ⚠️');
-        return { success: false, provider: 'bigrock', error: e.message };
-      }
-    }
-
-    // 3. Local Node.js Server Database Sync (database.json on localhost)
-    if (hasLocalServer && typeof fetch === 'function') {
-      try {
-        const res = await fetch('/api.php?action=save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success) {
-            cloudSyncAvailable = true;
-            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            updateSyncIndicator(true, `Server DB Synced (${timeStr})`);
-            return { success: true, provider: 'local_server', time: timeStr };
-          }
-        }
-      } catch (e) {
-        console.warn('Local server sync exception:', e);
-      }
-    }
-
-    updateSyncIndicator(false, 'Local Storage Mode');
-    return { success: true, provider: 'local_storage' };
   }
 
   async function manualCloudSync() {
-    showToast('Syncing all data with database...');
+    const sb = getSupabaseClient();
+    if (!sb) {
+      showToast('⚠️ Please connect Supabase database first in Settings.', true);
+      openCloudDatabaseModal();
+      return;
+    }
+
+    showToast('Syncing all data with Supabase database...');
     const res = await syncToCloud({ force: true });
     if (res && res.success) {
-      if (res.provider === 'supabase') {
-        showToast('✅ All data synced successfully to Supabase PostgreSQL!');
-      } else if (res.provider === 'bigrock') {
-        showToast('✅ All data synced successfully to BigRock MySQL!');
-      } else if (res.provider === 'local_server') {
-        showToast('✅ All data synced successfully to server database (database.json)!');
-      } else {
-        showToast('ℹ️ Data saved in Local Storage. Connect Supabase/BigRock to sync online.');
-      }
+      showToast('✅ All data synced successfully to Supabase PostgreSQL!');
     } else {
       showToast(`⚠️ Database sync failed: ${res ? res.error : 'Unknown error'}`, true);
     }
@@ -1005,25 +846,21 @@ WHERE id = 'main_store';`;
   function updateSyncIndicator(online, label, isSpinning = false) {
     const el = document.getElementById('cloud-sync-status');
     const footerEl = document.getElementById('footer-sync-status');
-    const displayText = label || (online ? 'Cloud Synced' : 'Local Mode');
+    const displayText = label || (online ? 'Supabase Synced' : 'Supabase Not Connected');
 
     if (el) {
       if (isSpinning) {
         el.className = 'hidden sm:flex items-center gap-1.5 text-[11px] bg-blue-50 text-blue-700 px-2.5 py-1.5 rounded-lg border border-blue-200 cursor-pointer transition';
         el.innerHTML = `<span class="w-2 h-2 rounded-full bg-blue-500 animate-spin"></span><span class="font-bold">${displayText}</span>`;
-        el.title = 'Syncing data with cloud database...';
+        el.title = 'Syncing data with Supabase database...';
       } else if (online) {
         el.className = 'hidden sm:flex items-center gap-1.5 text-[11px] bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg border border-emerald-200 cursor-pointer hover:bg-emerald-100 transition';
         el.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span class="font-bold">${displayText}</span>`;
         el.title = `Connected to ${displayText}. Click to view database settings.`;
-      } else if (displayText.includes('Error') || displayText.includes('Offline')) {
-        el.className = 'hidden sm:flex items-center gap-1.5 text-[11px] bg-amber-50 text-amber-800 px-2.5 py-1.5 rounded-lg border border-amber-300 cursor-pointer hover:bg-amber-100 transition';
-        el.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500"></span><span class="font-bold">${displayText}</span>`;
-        el.title = 'Click to check database connection settings.';
       } else {
-        el.className = 'hidden sm:flex items-center gap-1.5 text-[11px] bg-slate-100 text-slate-600 px-2.5 py-1.5 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-200 transition';
-        el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span><span class="font-medium">Local Mode</span>';
-        el.title = 'Running in browser local storage. Click to connect Supabase or BigRock.';
+        el.className = 'hidden sm:flex items-center gap-1.5 text-[11px] bg-amber-50 text-amber-800 px-2.5 py-1.5 rounded-lg border border-amber-300 cursor-pointer hover:bg-amber-100 transition';
+        el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span class="font-medium">Supabase Not Connected</span>`;
+        el.title = 'Supabase database is not connected. Click to configure connection.';
       }
     }
     if (footerEl) {
@@ -1038,7 +875,7 @@ WHERE id = 'main_store';`;
     const bizEmailEl = document.getElementById('dashboard-business-email');
     const bizSepEl = document.getElementById('dashboard-business-separator');
 
-    const name = (state.settings.businessName || '').trim() || 'Business Services & Solutions';
+    const name = (state.settings.businessName || '').trim() || 'My Business';
     const address = (state.settings.businessAddress || '').trim();
     const phone = (state.settings.businessPhone || '').trim();
     const email = (state.settings.businessEmail || '').trim();
@@ -1082,17 +919,24 @@ WHERE id = 'main_store';`;
   }
 
   function loadData() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        state.clients = JSON.parse(raw);
-      } else {
-        // If empty, generate starter sample data so user immediately sees value!
-        seedSampleData();
-      }
-    } catch (e) {
-      console.error('Error loading data:', e);
+    // When Supabase is not configured, there should not be any data in the project
+    if (!isSupabaseConfigured()) {
       state.clients = [];
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (e) {}
+    } else {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          state.clients = JSON.parse(raw);
+        } else {
+          state.clients = [];
+        }
+      } catch (e) {
+        console.error('Error loading data:', e);
+        state.clients = [];
+      }
     }
 
     try {
@@ -1137,174 +981,8 @@ WHERE id = 'main_store';`;
   }
 
   function seedSampleData() {
-    const curYM = getCurrentYearMonth();
-    const [curY, curM] = curYM.split('-').map(Number);
-
-    // Generate helper months relative to current
-    function offsetMonth(offset) {
-      let m = curM + offset;
-      let y = curY;
-      while (m < 1) {
-        m += 12;
-        y--;
-      }
-      while (m > 12) {
-        m -= 12;
-        y++;
-      }
-      return `${y}-${String(m).padStart(2, '0')}`;
-    }
-
-    const mMinus3 = offsetMonth(-3);
-    const mMinus2 = offsetMonth(-2);
-    const mMinus1 = offsetMonth(-1);
-    const mCurrent = offsetMonth(0);
-
-    state.clients = [
-      {
-        id: 'cli_1',
-        name: 'Ramesh Kumar',
-        businessName: 'Apex Infotech & Solutions',
-        phone: '+91 98450 11223',
-        email: 'accounts@apexinfo.com',
-        startMonth: mMinus3,
-        fixedMonthlyAmount: 5000,
-        extraFee: 1500,
-        extraFeeNote: 'Initial server setup & onboarding',
-        status: 'active',
-        notes: 'Monthly server maintenance & IT support retainer',
-        createdAt: new Date().toISOString(),
-        monthOverrides: {
-          [mMinus1]: { amount: 6500, note: 'Added database security audit (+1500)' },
-        },
-        payments: [
-          {
-            id: 'pay_1_1',
-            date: `${mMinus3}-10`,
-            amount: 6500,
-            method: 'Bank Transfer / NEFT',
-            reference: 'NEFT-889021',
-            targetMonth: null,
-            note: 'Paid full fee + setup fee for ' + formatMonthName(mMinus3),
-          },
-          {
-            id: 'pay_1_2',
-            date: `${mMinus2}-15`,
-            amount: 5000,
-            method: 'UPI / PhonePe / GPay',
-            reference: 'UPI-302910',
-            targetMonth: null,
-            note: 'Paid full for ' + formatMonthName(mMinus2),
-          },
-          {
-            id: 'pay_1_3',
-            date: `${mMinus1}-20`,
-            amount: 4000,
-            method: 'Bank Transfer / NEFT',
-            reference: 'NEFT-991204',
-            targetMonth: null,
-            note: 'Part payment for ' + formatMonthName(mMinus1),
-          },
-        ],
-      },
-      {
-        id: 'cli_2',
-        name: 'Suresh Patel',
-        businessName: 'GreenField Organic Stores',
-        phone: '+91 97401 55667',
-        email: 'billing@greenfield.store',
-        startMonth: mMinus2,
-        fixedMonthlyAmount: 3500,
-        status: 'active',
-        notes: 'POS software subscription & weekly backups',
-        createdAt: new Date().toISOString(),
-        monthOverrides: {},
-        payments: [
-          {
-            id: 'pay_2_1',
-            date: `${mMinus2}-05`,
-            amount: 3500,
-            method: 'Cash',
-            reference: 'CASH-REC-01',
-            targetMonth: null,
-            note: 'On-time monthly settlement',
-          },
-          {
-            id: 'pay_2_2',
-            date: `${mMinus1}-08`,
-            amount: 3500,
-            method: 'UPI / PhonePe / GPay',
-            reference: 'UPI-774120',
-            targetMonth: null,
-            note: 'Paid on time',
-          },
-          {
-            id: 'pay_2_3',
-            date: `${mCurrent}-02`,
-            amount: 3500,
-            method: 'UPI / PhonePe / GPay',
-            reference: 'UPI-991122',
-            targetMonth: null,
-            note: 'Current month paid in advance',
-          },
-        ],
-      },
-      {
-        id: 'cli_3',
-        name: 'Dr. Vivek Sharma',
-        businessName: 'Sharma Dental & Health Care',
-        phone: '+91 91234 88990',
-        email: 'dr.sharma@healthcare.org',
-        startMonth: mMinus3,
-        fixedMonthlyAmount: 4000,
-        extraFee: 0,
-        status: 'active',
-        notes: 'Website hosting, updates and SEO retainer',
-        createdAt: new Date().toISOString(),
-        monthOverrides: {
-          [mMinus2]: { amount: 3000, note: 'Special festival discount (-1000)' },
-        },
-        payments: [
-          {
-            id: 'pay_3_1',
-            date: `${mMinus3}-12`,
-            amount: 4000,
-            method: 'Cheque',
-            reference: 'CHQ-445512',
-            targetMonth: null,
-            note: 'Cheque cleared',
-          },
-        ],
-      },
-      {
-        id: 'cli_4',
-        name: 'Rahul Varma',
-        businessName: 'Vibrant Fitness & Gym',
-        phone: '+91 99887 66554',
-        email: 'contact@vibrantgym.in',
-        startMonth: mMinus1,
-        fixedMonthlyAmount: 2500,
-        extraFee: 500,
-        extraFeeNote: 'ID card & registration fee',
-        status: 'active',
-        notes: 'Social media management & poster design',
-        createdAt: new Date().toISOString(),
-        monthOverrides: {},
-        payments: [
-          {
-            id: 'pay_4_1',
-            date: `${mMinus1}-01`,
-            amount: 5000,
-            method: 'UPI / PhonePe / GPay',
-            reference: 'UPI-552233',
-            targetMonth: null,
-            note: 'Paid 2 months in advance',
-          },
-        ],
-      },
-    ];
-
-    saveData();
+    // No default dummy clients - clean state
+    state.clients = [];
   }
 
   // ==================== TOAST & UI HELPERS ====================
@@ -2288,7 +1966,7 @@ WHERE id = 'main_store';`;
     const phone = phoneInput ? phoneInput.value.trim() : '';
     const email = emailInput ? emailInput.value.trim() : '';
 
-    state.settings.businessName = name || 'Business Services & Solutions';
+    state.settings.businessName = name || 'My Business';
     state.settings.businessAddress = address;
     state.settings.businessPhone = phone;
     state.settings.businessEmail = email;
@@ -2983,11 +2661,12 @@ WHERE id = 'main_store';`;
   }
 
   function loadSampleData() {
-    if (confirm('Load demo sample clients? Existing data will be replaced with rich demo data.')) {
-      seedSampleData();
-      showToast('Sample demo data loaded!');
-      showView('dashboard');
+    if (!isSupabaseConfigured()) {
+      showToast('⚠️ Please connect your Supabase database first.', true);
+      openCloudDatabaseModal();
+      return;
     }
+    showToast('No default demo data. Create clients directly or import from backup.');
   }
 
   function changeCurrency(curr) {

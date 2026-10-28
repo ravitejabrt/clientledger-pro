@@ -188,9 +188,9 @@
         <!-- Action Buttons -->
         <div class="flex items-center space-x-2">
           <!-- Cloud / Local Sync Status Indicator -->
-          <div id="cloud-sync-status" onclick="app.openCloudDatabaseModal()" class="hidden sm:flex items-center gap-1.5 text-[11px] bg-slate-100 text-slate-600 px-2.5 py-1.5 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-200 transition" title="Click to view/configure BigRock database connection">
-            <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-            <span class="font-medium">Local Mode</span>
+          <div id="cloud-sync-status" onclick="app.openCloudDatabaseModal()" class="hidden sm:flex items-center gap-1.5 text-[11px] bg-amber-50 text-amber-800 px-2.5 py-1.5 rounded-lg border border-amber-300 cursor-pointer hover:bg-amber-100 transition" title="Click to view/configure Supabase cloud database connection">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+            <span class="font-medium">Supabase Not Connected</span>
           </div>
 
           <!-- Currency selector -->
@@ -223,15 +223,11 @@
                 <span>Edit Business Profile</span>
               </button>
               <button onclick="app.openCloudDatabaseModal(); app.toggleSettingsDropdown();" class="w-full text-left px-3.5 py-2.5 text-slate-800 hover:bg-indigo-50 hover:text-indigo-700 flex items-center space-x-2.5 font-medium transition">
-                <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
-                <span>BigRock Cloud Database</span>
+                <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                <span>Cloud Database (Supabase)</span>
               </button>
               <div class="border-t border-slate-100 my-1"></div>
               <div class="px-3.5 py-1 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">Data Management</div>
-              <button onclick="app.loadSampleData(); app.toggleSettingsDropdown();" class="w-full text-left px-3.5 py-2 text-slate-700 hover:bg-slate-50 flex items-center space-x-2.5 transition">
-                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-                <span>Load Sample Demo Data</span>
-              </button>
               <button onclick="app.exportJSON(); app.toggleSettingsDropdown();" class="w-full text-left px-3.5 py-2 text-slate-700 hover:bg-slate-50 flex items-center space-x-2.5 transition">
                 <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                 <span>Backup Data (Export JSON)</span>
@@ -294,20 +290,20 @@
               <span class="p-1.5 rounded-lg bg-white/10 backdrop-blur-sm text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
               </span>
-              <h1 id="dashboard-business-name" class="text-2xl font-black tracking-tight text-white">Business Services & Solutions</h1>
+              <h1 id="dashboard-business-name" class="text-2xl font-black tracking-tight text-white">My Business</h1>
               <button onclick="app.openEditBusinessProfileModal()" class="text-blue-200 hover:text-white p-1 rounded-md hover:bg-white/10 transition" title="Edit Business Profile">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
               </button>
             </div>
             
-            <p id="dashboard-business-address" class="text-blue-100 text-xs flex items-center gap-1.5">
-              <span>📍</span> <span>101 Commercial Hub, Main Street</span>
+            <p id="dashboard-business-address" class="text-blue-100 text-xs hidden flex items-center gap-1.5">
+              <span>📍</span> <span></span>
             </p>
             
             <div class="flex flex-wrap items-center gap-3 text-xs text-blue-100 pt-0.5">
-              <span id="dashboard-business-phone" class="flex items-center gap-1">📞 +91 98765 43210</span>
-              <span id="dashboard-business-separator">&bull;</span>
-              <span id="dashboard-business-email" class="flex items-center gap-1">✉️ billing@example.com</span>
+              <span id="dashboard-business-phone" class="hidden flex items-center gap-1"></span>
+              <span id="dashboard-business-separator" class="hidden">&bull;</span>
+              <span id="dashboard-business-email" class="hidden flex items-center gap-1"></span>
             </div>
           </div>
 
@@ -321,6 +317,29 @@
             </button>
             <button onclick="app.openRecordPaymentModal()" class="bg-emerald-500 hover:bg-emerald-400 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-all shadow">
               Record Payment
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Supabase Not Connected Alert Banner -->
+      <div id="supabase-connect-banner" class="hidden bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl p-5 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-lg shrink-0 shadow-sm">
+              ⚡
+            </div>
+            <div>
+              <h3 class="text-sm font-bold text-amber-900">Supabase Cloud Database Not Connected</h3>
+              <p class="text-xs text-amber-700 mt-0.5">
+                All client records, billing, and balance calculations sync directly with your Supabase database. Connect your database to start adding clients or view live synced data.
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button onclick="app.openCloudDatabaseModal()" class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition shadow flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              <span>Connect Supabase Now</span>
             </button>
           </div>
         </div>
@@ -1355,6 +1374,6 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="app.js?v=2.3"></script>
+  <script src="app.js?v=2.4"></script>
 </body>
 </html>

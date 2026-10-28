@@ -1,0 +1,19 @@
+{
+  "name": "clientledger-pro",
+  "version": "1.0.0",
+  "description": "Browser-based recurring monthly billing, fee override and cumulative balance ledger manager",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "recurring-billing",
+    "ledger",
+    "client-balance",
+    "accounting",
+    "monthly-fees",
+    "fifo-allocation"
+  ],
+  "author": "Antigravity",
+  "license": "MIT"
+}

@@ -38,7 +38,7 @@ END $$;
 
 -- 5. Insert starter record if table is brand new
 INSERT INTO public.clientledger_data (id, data)
-VALUES ('main_store', '{"clients":[],"settings":{"currency":"₹","businessName":"Business Services & Solutions"}}'::jsonb)
+VALUES ('main_store', '{"clients":[],"settings":{"currency":"₹","businessName":""}}'::jsonb)
 ON CONFLICT (id) DO NOTHING;
 
 -- ==============================================================
