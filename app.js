@@ -198,15 +198,24 @@
 
       const isStartYear = (y === (client.startYear || (client.startMonth ? client.startMonth.split('-')[0] : '')));
       const extraFeeAmt = (isStartYear && Number(client.extraFee || 0) > 0) ? Number(client.extraFee) : 0;
+      const itFeeAmt = (isStartYear && Number(client.incomeTaxFee || 0) > 0) ? Number(client.incomeTaxFee) : 0;
+      const combinedFees = extraFeeAmt + itFeeAmt;
 
       if (isOverridden) {
         billed = Number(override.amount);
         overrideNote = override.note || '';
       } else {
-        billed = Number(client.fixedYearlyAmount || client.fixedMonthlyAmount || 0) + extraFeeAmt;
-        if (extraFeeAmt > 0) {
+        billed = Number(client.fixedYearlyAmount || client.fixedMonthlyAmount || 0) + combinedFees;
+        if (combinedFees > 0) {
           isOverridden = true;
-          overrideNote = client.extraFeeNote ? `Includes Extra Fee: ${formatCurrency(extraFeeAmt)} (${client.extraFeeNote})` : `Includes Extra Fee: ${formatCurrency(extraFeeAmt)}`;
+          const feeParts = [];
+          if (itFeeAmt > 0) {
+            feeParts.push(client.incomeTaxNote ? `IT Fee: ${formatCurrency(itFeeAmt)} (${client.incomeTaxNote})` : `IT Fee: ${formatCurrency(itFeeAmt)}`);
+          }
+          if (extraFeeAmt > 0) {
+            feeParts.push(client.extraFeeNote ? `Extra Fee: ${formatCurrency(extraFeeAmt)} (${client.extraFeeNote})` : `Extra Fee: ${formatCurrency(extraFeeAmt)}`);
+          }
+          overrideNote = `Includes ${feeParts.join(', ')}`;
         }
       }
 
@@ -248,8 +257,9 @@
       });
     });
 
-    if (years.length === 0 && Number(client.extraFee || 0) > 0) {
-      totalBilled += Number(client.extraFee);
+    const standaloneFees = Number(client.extraFee || 0) + Number(client.incomeTaxFee || 0);
+    if (years.length === 0 && standaloneFees > 0) {
+      totalBilled += standaloneFees;
     }
 
     const totalPaidAll = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
@@ -328,17 +338,26 @@
       let billed = 0;
       let overrideNote = '';
 
-      const isStartMonth = (m === client.startMonth);
+      const isStartMonth = (m === (client.startMonth || months[0]));
       const extraFeeAmt = (isStartMonth && Number(client.extraFee || 0) > 0) ? Number(client.extraFee) : 0;
+      const itFeeAmt = (isStartMonth && Number(client.incomeTaxFee || 0) > 0) ? Number(client.incomeTaxFee) : 0;
+      const combinedFees = extraFeeAmt + itFeeAmt;
 
       if (isOverridden) {
         billed = Number(override.amount);
         overrideNote = override.note || '';
       } else {
-        billed = Number(client.fixedMonthlyAmount || 0) + extraFeeAmt;
-        if (extraFeeAmt > 0) {
+        billed = Number(client.fixedMonthlyAmount || 0) + combinedFees;
+        if (combinedFees > 0) {
           isOverridden = true;
-          overrideNote = client.extraFeeNote ? `Includes Extra Fee: ${formatCurrency(extraFeeAmt)} (${client.extraFeeNote})` : `Includes Extra Fee: ${formatCurrency(extraFeeAmt)}`;
+          const feeParts = [];
+          if (itFeeAmt > 0) {
+            feeParts.push(client.incomeTaxNote ? `IT Fee: ${formatCurrency(itFeeAmt)} (${client.incomeTaxNote})` : `IT Fee: ${formatCurrency(itFeeAmt)}`);
+          }
+          if (extraFeeAmt > 0) {
+            feeParts.push(client.extraFeeNote ? `Extra Fee: ${formatCurrency(extraFeeAmt)} (${client.extraFeeNote})` : `Extra Fee: ${formatCurrency(extraFeeAmt)}`);
+          }
+          overrideNote = `Includes ${feeParts.join(', ')}`;
         }
       }
 
@@ -382,8 +401,9 @@
       });
     });
 
-    if (months.length === 0 && Number(client.extraFee || 0) > 0) {
-      totalBilled += Number(client.extraFee);
+    const standaloneFees = Number(client.extraFee || 0) + Number(client.incomeTaxFee || 0);
+    if (months.length === 0 && standaloneFees > 0) {
+      totalBilled += standaloneFees;
     }
 
     const totalPaidAll = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
@@ -2295,7 +2315,11 @@ WHERE id = 'main_store';`;
       noteInput.value = existingOverride.note || '';
       if (resetBtn) resetBtn.classList.remove('hidden');
     } else {
-      amountInput.value = isYearly ? (client.fixedYearlyAmount || client.fixedMonthlyAmount || 0) : (client.fixedMonthlyAmount || 0);
+      const isStart = isYearly ? (selectedMonth === (client.startYear || (client.startMonth ? client.startMonth.split('-')[0] : ''))) : (selectedMonth === (client.startMonth || ''));
+      const extraAmt = isStart ? Number(client.extraFee || 0) : 0;
+      const itAmt = isStart ? Number(client.incomeTaxFee || 0) : 0;
+      const baseFee = isYearly ? (client.fixedYearlyAmount || client.fixedMonthlyAmount || 0) : (client.fixedMonthlyAmount || 0);
+      amountInput.value = baseFee + extraAmt + itAmt;
       noteInput.value = '';
       if (resetBtn) resetBtn.classList.add('hidden');
     }
