@@ -819,6 +819,23 @@
             </div>
           </div>
 
+          <!-- Income Tax Fee Row (Optional) -->
+          <div class="grid grid-cols-2 gap-3 pt-2.5 border-t border-blue-100">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Income Tax Fee <span class="text-slate-400 font-normal lowercase text-[11px]">(optional)</span></label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm font-bold current-currency-symbol">₹</span>
+                <input type="number" id="add-client-income-tax-fee" min="0" step="any" placeholder="0" class="w-full text-sm pl-7 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-semibold">
+              </div>
+              <p class="text-[10px] text-slate-400 mt-1">Optional annual / income tax fee</p>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Income Tax Note <span class="text-slate-400 font-normal lowercase text-[11px]">(optional)</span></label>
+              <input type="text" id="add-client-income-tax-note" placeholder="e.g. Annual ITR filing" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+              <p class="text-[10px] text-slate-400 mt-1">Reason / note for income tax fee</p>
+            </div>
+          </div>
+
           <!-- Extra Fee Row below Fixed Monthly Fee -->
           <div class="grid grid-cols-2 gap-3 pt-2.5 border-t border-blue-100">
             <div>
@@ -852,6 +869,23 @@
               <label class="block text-xs font-semibold text-slate-800 uppercase tracking-wider mb-1">Billing Start Year *</label>
               <input type="number" id="add-client-start-year" min="2000" max="2099" step="1" placeholder="2026" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white font-semibold">
               <p class="text-[10px] text-slate-500 mt-1">Calendar year when annual billing began</p>
+            </div>
+          </div>
+
+          <!-- Income Tax Fee Row (Optional) -->
+          <div class="grid grid-cols-2 gap-3 pt-2.5 border-t border-amber-200/60">
+            <div>
+              <label class="block text-xs font-semibold text-slate-800 uppercase tracking-wider mb-1">Income Tax Fee <span class="text-slate-400 font-normal lowercase text-[11px]">(optional)</span></label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm font-bold current-currency-symbol">₹</span>
+                <input type="number" id="add-client-yearly-income-tax-fee" min="0" step="any" placeholder="0" class="w-full text-sm pl-7 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white font-semibold">
+              </div>
+              <p class="text-[10px] text-slate-500 mt-1">Optional annual / income tax fee</p>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-800 uppercase tracking-wider mb-1">Income Tax Note <span class="text-slate-400 font-normal lowercase text-[11px]">(optional)</span></label>
+              <input type="text" id="add-client-yearly-income-tax-note" placeholder="e.g. Annual ITR filing" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white">
+              <p class="text-[10px] text-slate-500 mt-1">Reason / note for income tax fee</p>
             </div>
           </div>
 
@@ -1132,6 +1166,23 @@
             </div>
           </div>
 
+          <!-- Income Tax Fee Row (Optional) -->
+          <div class="grid grid-cols-2 gap-3 pt-2.5 border-t border-blue-100">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Income Tax Fee <span class="text-slate-400 font-normal lowercase text-[11px]">(optional)</span></label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm font-bold current-currency-symbol">₹</span>
+                <input type="number" id="edit-client-income-tax-fee" min="0" step="any" placeholder="0" class="w-full text-sm pl-7 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-semibold">
+              </div>
+              <p class="text-[10px] text-slate-400 mt-1">Optional annual / income tax fee</p>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Income Tax Note <span class="text-slate-400 font-normal lowercase text-[11px]">(optional)</span></label>
+              <input type="text" id="edit-client-income-tax-note" placeholder="e.g. Annual ITR filing" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+              <p class="text-[10px] text-slate-400 mt-1">Reason / note for income tax fee</p>
+            </div>
+          </div>
+
           <!-- Extra Fee Row below Fixed Monthly Fee -->
           <div class="grid grid-cols-2 gap-3 pt-2.5 border-t border-blue-100">
             <div>
@@ -1162,6 +1213,23 @@
             <div>
               <label class="block text-xs font-semibold text-slate-800 uppercase tracking-wider mb-1">Billing Start Year *</label>
               <input type="number" id="edit-client-start-year" min="2000" max="2099" step="1" placeholder="2026" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white font-semibold">
+            </div>
+          </div>
+
+          <!-- Income Tax Fee Row (Optional) -->
+          <div class="grid grid-cols-2 gap-3 pt-2.5 border-t border-amber-200/60">
+            <div>
+              <label class="block text-xs font-semibold text-slate-800 uppercase tracking-wider mb-1">Income Tax Fee <span class="text-slate-400 font-normal lowercase text-[11px]">(optional)</span></label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm font-bold current-currency-symbol">₹</span>
+                <input type="number" id="edit-client-yearly-income-tax-fee" min="0" step="any" placeholder="0" class="w-full text-sm pl-7 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white font-semibold">
+              </div>
+              <p class="text-[10px] text-slate-500 mt-1">Optional annual / income tax fee</p>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-800 uppercase tracking-wider mb-1">Income Tax Note <span class="text-slate-400 font-normal lowercase text-[11px]">(optional)</span></label>
+              <input type="text" id="edit-client-yearly-income-tax-note" placeholder="e.g. Annual ITR filing" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white">
+              <p class="text-[10px] text-slate-500 mt-1">Reason / note for income tax fee</p>
             </div>
           </div>
 
@@ -1388,6 +1456,6 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="app.js?v=2.7"></script>
+  <script src="app.js?v=2.8"></script>
 </body>
 </html>

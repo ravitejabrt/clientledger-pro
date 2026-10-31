@@ -58,6 +58,8 @@ SELECT
     c->>'billingCycle' AS billing_cycle,
     COALESCE((c->>'fixedMonthlyAmount')::numeric, 0) AS fixed_monthly_fee,
     COALESCE((c->>'fixedYearlyAmount')::numeric, 0) AS fixed_yearly_fee,
+    COALESCE((c->>'incomeTaxFee')::numeric, 0) AS income_tax_fee,
+    c->>'incomeTaxNote' AS income_tax_note,
     COALESCE((c->>'extraFee')::numeric, 0) AS extra_fee,
     c->>'extraFeeNote' AS extra_fee_note,
     c->>'startMonth' AS start_month,

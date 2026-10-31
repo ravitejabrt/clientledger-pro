@@ -65,6 +65,14 @@
     return `${y}-${m}`;
   }
 
+  // Returns the previous / last completed month (e.g. if now is 2026-10, returns 2026-09)
+  function getLastMonth(referenceDate = new Date()) {
+    const d = new Date(referenceDate.getFullYear(), referenceDate.getMonth() - 1, 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }
+
   function getTodayDate() {
     const now = new Date();
     const y = now.getFullYear();
@@ -240,6 +248,10 @@
       });
     });
 
+    if (years.length === 0 && Number(client.extraFee || 0) > 0) {
+      totalBilled += Number(client.extraFee);
+    }
+
     const totalPaidAll = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const totalDiscountAll = payments.reduce((sum, p) => sum + (Number(p.discount) || 0), 0);
     const finalBalance = totalBilled - (totalPaidAll + totalDiscountAll);
@@ -269,25 +281,20 @@
       return calculateYearlyClientLedger(client, explicitUpToMonth);
     }
 
-    const currentYM = getCurrentYearMonth();
-    let maxMonth = explicitUpToMonth || currentYM;
-
-    // Check if client has overrides or payments in future months beyond maxMonth
-    if (client.monthOverrides) {
-      Object.keys(client.monthOverrides).forEach(m => {
-        if (m > maxMonth) maxMonth = m;
-      });
-    }
-    if (client.payments) {
-      client.payments.forEach(p => {
-        if (p.targetMonth && p.targetMonth > maxMonth) maxMonth = p.targetMonth;
-      });
+    // Current/present month is NOT billed or allocated; billing applies strictly till last month
+    const lastMonth = getLastMonth();
+    let maxMonth = lastMonth;
+    if (explicitUpToMonth && compareMonths(explicitUpToMonth, lastMonth) < 0) {
+      maxMonth = explicitUpToMonth;
     }
 
-    const startMonth = client.startMonth || currentYM;
-    // If start month is after maxMonth, ensure at least startMonth is generated
-    const effectiveEndMonth = compareMonths(startMonth, maxMonth) > 0 ? startMonth : maxMonth;
-    const months = generateMonthList(startMonth, effectiveEndMonth);
+    const startMonth = client.startMonth || lastMonth;
+    // Current month payment is NOT allocated; allocate only till last month
+    // Present month must NEVER be displayed as a pending month
+    let months = [];
+    if (compareMonths(startMonth, maxMonth) <= 0) {
+      months = generateMonthList(startMonth, maxMonth);
+    }
 
     // Prepare payments
     const payments = Array.isArray(client.payments) ? [...client.payments] : [];
@@ -374,6 +381,10 @@
         status, // PAID, PARTIAL, UNPAID, OVERPAID
       });
     });
+
+    if (months.length === 0 && Number(client.extraFee || 0) > 0) {
+      totalBilled += Number(client.extraFee);
+    }
 
     const totalPaidAll = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const totalDiscountAll = payments.reduce((sum, p) => sum + (Number(p.discount) || 0), 0);
@@ -498,6 +509,7 @@ SELECT
     c->>'gstNumber' AS gst_number,
     c->>'billingCycle' AS billing_cycle,
     COALESCE((c->>'fixedMonthlyAmount')::numeric, 0) AS fixed_monthly_fee,
+    COALESCE((c->>'incomeTaxFee')::numeric, 0) AS income_tax_fee,
     COALESCE((c->>'extraFee')::numeric, 0) AS extra_fee,
     c->>'startMonth' AS start_month,
     c->>'status' AS status,
@@ -1489,6 +1501,11 @@ WHERE id = 'main_store';`;
   // ==================== CLIENT LEDGER DETAIL RENDERING ====================
   function viewClientDetail(clientId) {
     state.activeClientId = clientId;
+    const upToMonthInput = document.getElementById('ledger-up-to-month');
+    if (upToMonthInput) {
+      upToMonthInput.value = getLastMonth();
+      upToMonthInput.max = getLastMonth();
+    }
     showView('client-detail');
   }
 
@@ -1501,10 +1518,17 @@ WHERE id = 'main_store';`;
     }
 
     const upToMonthInput = document.getElementById('ledger-up-to-month');
-    let chosenUpTo = upToMonthInput ? upToMonthInput.value : null;
-    if (!chosenUpTo) {
-      chosenUpTo = getCurrentYearMonth();
-      if (upToMonthInput) upToMonthInput.value = chosenUpTo;
+    const lastCompleted = getLastMonth();
+    let chosenUpTo = lastCompleted;
+
+    if (upToMonthInput) {
+      upToMonthInput.max = lastCompleted;
+      if (upToMonthInput.value && compareMonths(upToMonthInput.value, lastCompleted) <= 0) {
+        chosenUpTo = upToMonthInput.value;
+      } else {
+        upToMonthInput.value = lastCompleted;
+        chosenUpTo = lastCompleted;
+      }
     }
 
     const ledger = calculateClientLedger(client, chosenUpTo);
@@ -1537,6 +1561,9 @@ WHERE id = 'main_store';`;
     if (startEl) startEl.innerHTML = `<span>📅</span> Started: ${isYearly ? `Year ${client.startYear || (client.startMonth ? client.startMonth.substring(0, 4) : '')}` : formatMonthName(client.startMonth)}`;
     if (fixedFeeEl) {
       let feeText = `Default Fixed: ${formatCurrency(isYearly ? (client.fixedYearlyAmount || client.fixedMonthlyAmount) : client.fixedMonthlyAmount)} / ${isYearly ? 'year' : 'month'}`;
+      if (client.incomeTaxFee > 0) {
+        feeText += ` &bull; <span class="font-bold text-emerald-700">IT Fee: ${formatCurrency(client.incomeTaxFee)}${client.incomeTaxNote ? ` (${escapeHtml(client.incomeTaxNote)})` : ''}</span>`;
+      }
       if (client.extraFee > 0) {
         feeText += ` &bull; <span class="font-bold text-indigo-700">Extra Fee: ${formatCurrency(client.extraFee)}${client.extraFeeNote ? ` (${escapeHtml(client.extraFeeNote)})` : ''}</span>`;
       }
@@ -1591,8 +1618,18 @@ WHERE id = 'main_store';`;
       // Reverse chronological order for ledger (latest month at top)
       const reversedBreakdown = [...ledger.monthlyBreakdown].reverse();
 
-      breakdownTbody.innerHTML = reversedBreakdown
-        .map(row => {
+      if (reversedBreakdown.length === 0) {
+        breakdownTbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="py-8 text-center text-slate-400">
+              <div class="text-sm font-semibold text-slate-600">No completed billing months yet</div>
+              <div class="text-xs text-slate-400 mt-1">Client joined in the current month (${formatMonthName(client.startMonth)}). Current month dues are allocated only after the month completes.</div>
+            </td>
+          </tr>
+        `;
+      } else {
+        breakdownTbody.innerHTML = reversedBreakdown
+          .map(row => {
           let feeTypeBadge = '';
           if (row.isOverridden) {
             feeTypeBadge = `
@@ -1681,6 +1718,7 @@ WHERE id = 'main_store';`;
         `;
         })
         .join('');
+      }
     }
 
     // Payment History Table
@@ -1743,14 +1781,14 @@ WHERE id = 'main_store';`;
     if (!container) return;
 
     const count = monthsSelect ? Number(monthsSelect.value) || 12 : 12;
-    const curYM = getCurrentYearMonth();
-    const [curY, curM] = curYM.split('-').map(Number);
+    const lastYM = getLastMonth();
+    const [lastY, lastM] = lastYM.split('-').map(Number);
 
-    // Generate recent N months up to current
+    // Generate recent N completed months up to last month (present month is not displayed)
     const matrixMonths = [];
     for (let i = count - 1; i >= 0; i--) {
-      let m = curM - i;
-      let y = curY;
+      let m = lastM - i;
+      let y = lastY;
       while (m < 1) {
         m += 12;
         y--;
@@ -1837,7 +1875,7 @@ WHERE id = 'main_store';`;
       if (modalId === 'addClientModal') {
         const startMonthInput = document.getElementById('add-client-start-month');
         if (startMonthInput && !startMonthInput.value) {
-          startMonthInput.value = getCurrentYearMonth();
+          startMonthInput.value = getLastMonth();
         }
       }
     }
@@ -1915,6 +1953,8 @@ WHERE id = 'main_store';`;
 
     let fixedMonthlyAmount = 0;
     let fixedYearlyAmount = 0;
+    let incomeTaxFee = 0;
+    let incomeTaxNote = '';
     let extraFee = 0;
     let extraFeeNote = '';
     let startMonth = '';
@@ -1922,6 +1962,8 @@ WHERE id = 'main_store';`;
 
     if (billingCycle === 'yearly') {
       fixedYearlyAmount = Number(document.getElementById('add-client-yearly-fee').value);
+      incomeTaxFee = Number(document.getElementById('add-client-yearly-income-tax-fee')?.value || 0);
+      incomeTaxNote = document.getElementById('add-client-yearly-income-tax-note')?.value.trim() || '';
       extraFee = Number(document.getElementById('add-client-yearly-extra-fee')?.value || 0);
       extraFeeNote = document.getElementById('add-client-yearly-extra-fee-note')?.value.trim() || '';
       startYear = String(document.getElementById('add-client-start-year').value).trim();
@@ -1932,6 +1974,8 @@ WHERE id = 'main_store';`;
       startMonth = `${startYear}-01`;
     } else {
       fixedMonthlyAmount = Number(document.getElementById('add-client-fixed-fee').value);
+      incomeTaxFee = Number(document.getElementById('add-client-income-tax-fee')?.value || 0);
+      incomeTaxNote = document.getElementById('add-client-income-tax-note')?.value.trim() || '';
       extraFee = Number(document.getElementById('add-client-extra-fee')?.value || 0);
       extraFeeNote = document.getElementById('add-client-extra-fee-note')?.value.trim() || '';
       startMonth = document.getElementById('add-client-start-month').value;
@@ -1951,6 +1995,8 @@ WHERE id = 'main_store';`;
       gstNumber,
       fixedMonthlyAmount,
       fixedYearlyAmount,
+      incomeTaxFee: isNaN(incomeTaxFee) ? 0 : incomeTaxFee,
+      incomeTaxNote,
       extraFee: isNaN(extraFee) ? 0 : extraFee,
       extraFeeNote,
       startMonth,
@@ -2009,19 +2055,27 @@ WHERE id = 'main_store';`;
     if (cycle === 'yearly') {
       const yearlyFeeInput = document.getElementById('edit-client-yearly-fee');
       const startYearInput = document.getElementById('edit-client-start-year');
+      const yearlyItFeeInput = document.getElementById('edit-client-yearly-income-tax-fee');
+      const yearlyItNoteInput = document.getElementById('edit-client-yearly-income-tax-note');
       const yearlyExtraFeeInput = document.getElementById('edit-client-yearly-extra-fee');
       const yearlyExtraFeeNoteInput = document.getElementById('edit-client-yearly-extra-fee-note');
       if (yearlyFeeInput) yearlyFeeInput.value = client.fixedYearlyAmount || client.fixedMonthlyAmount || 0;
       if (startYearInput) startYearInput.value = client.startYear || (client.startMonth ? client.startMonth.split('-')[0] : new Date().getFullYear());
+      if (yearlyItFeeInput) yearlyItFeeInput.value = client.incomeTaxFee || 0;
+      if (yearlyItNoteInput) yearlyItNoteInput.value = client.incomeTaxNote || '';
       if (yearlyExtraFeeInput) yearlyExtraFeeInput.value = client.extraFee || 0;
       if (yearlyExtraFeeNoteInput) yearlyExtraFeeNoteInput.value = client.extraFeeNote || '';
     } else {
       const fixedFeeInput = document.getElementById('edit-client-fixed-fee');
       const startMonthInput = document.getElementById('edit-client-start-month');
+      const itFeeInput = document.getElementById('edit-client-income-tax-fee');
+      const itNoteInput = document.getElementById('edit-client-income-tax-note');
       const extraFeeInput = document.getElementById('edit-client-extra-fee');
       const extraFeeNoteInput = document.getElementById('edit-client-extra-fee-note');
       if (fixedFeeInput) fixedFeeInput.value = client.fixedMonthlyAmount || 0;
       if (startMonthInput) startMonthInput.value = client.startMonth || getCurrentYearMonth();
+      if (itFeeInput) itFeeInput.value = client.incomeTaxFee || 0;
+      if (itNoteInput) itNoteInput.value = client.incomeTaxNote || '';
       if (extraFeeInput) extraFeeInput.value = client.extraFee || 0;
       if (extraFeeNoteInput) extraFeeNoteInput.value = client.extraFeeNote || '';
     }
@@ -2055,22 +2109,30 @@ WHERE id = 'main_store';`;
     if (billingCycle === 'yearly') {
       const fee = Number(document.getElementById('edit-client-yearly-fee').value);
       const startYear = String(document.getElementById('edit-client-start-year').value).trim();
+      const incomeTaxFee = Number(document.getElementById('edit-client-yearly-income-tax-fee')?.value || 0);
+      const incomeTaxNote = document.getElementById('edit-client-yearly-income-tax-note')?.value.trim() || '';
       const extraFee = Number(document.getElementById('edit-client-yearly-extra-fee')?.value || 0);
       const extraFeeNote = document.getElementById('edit-client-yearly-extra-fee-note')?.value.trim() || '';
       client.fixedYearlyAmount = fee;
       client.startYear = startYear;
       client.startMonth = `${startYear}-01`;
       client.fixedMonthlyAmount = 0;
+      client.incomeTaxFee = isNaN(incomeTaxFee) ? 0 : incomeTaxFee;
+      client.incomeTaxNote = incomeTaxNote;
       client.extraFee = isNaN(extraFee) ? 0 : extraFee;
       client.extraFeeNote = extraFeeNote;
     } else {
       const fee = Number(document.getElementById('edit-client-fixed-fee').value);
       const startMonth = document.getElementById('edit-client-start-month').value;
+      const incomeTaxFee = Number(document.getElementById('edit-client-income-tax-fee')?.value || 0);
+      const incomeTaxNote = document.getElementById('edit-client-income-tax-note')?.value.trim() || '';
       const extraFee = Number(document.getElementById('edit-client-extra-fee')?.value || 0);
       const extraFeeNote = document.getElementById('edit-client-extra-fee-note')?.value.trim() || '';
       client.fixedMonthlyAmount = fee;
       client.startMonth = startMonth;
       client.startYear = startMonth ? startMonth.split('-')[0] : '';
+      client.incomeTaxFee = isNaN(incomeTaxFee) ? 0 : incomeTaxFee;
+      client.incomeTaxNote = incomeTaxNote;
       client.extraFee = isNaN(extraFee) ? 0 : extraFee;
       client.extraFeeNote = extraFeeNote;
     }
@@ -2210,7 +2272,7 @@ WHERE id = 'main_store';`;
       monthInput.removeAttribute('step');
     }
 
-    const targetPeriod = specificPeriod || (isYearly ? String(new Date().getFullYear()) : getCurrentYearMonth());
+    const targetPeriod = specificPeriod || (isYearly ? String(new Date().getFullYear()) : getLastMonth());
     monthInput.value = targetPeriod;
 
     onOverrideMonthChange(targetPeriod);
@@ -2603,7 +2665,7 @@ WHERE id = 'main_store';`;
             ${client.businessName ? `<p class="text-xs text-slate-700 font-semibold">Contact Person: ${escapeHtml(client.name)}</p>` : ''}
             <p class="text-xs text-slate-600">${escapeHtml(client.phone || '')}</p>
             <p class="text-xs text-slate-600">${escapeHtml(client.email || '')}</p>
-            <p class="text-xs text-slate-500 mt-1">Billing Started: ${formatMonthName(client.startMonth)} &bull; Fixed Fee: ${formatCurrency(client.fixedMonthlyAmount)}/mo${client.extraFee > 0 ? ` &bull; Extra Fee: ${formatCurrency(client.extraFee)}` : ''}</p>
+            <p class="text-xs text-slate-500 mt-1">Billing Started: ${formatMonthName(client.startMonth)} &bull; Fixed Fee: ${formatCurrency(client.fixedMonthlyAmount)}/mo${client.incomeTaxFee > 0 ? ` &bull; IT Fee: ${formatCurrency(client.incomeTaxFee)}` : ''}${client.extraFee > 0 ? ` &bull; Extra Fee: ${formatCurrency(client.extraFee)}` : ''}</p>
           </div>
           <div class="text-right flex flex-col justify-center">
             <span class="text-xs font-bold uppercase text-slate-400">Final Outstanding Balance:</span>
@@ -2773,7 +2835,7 @@ WHERE id = 'main_store';`;
     }
 
     const rows = [
-      ['Client Name', 'Business Name', 'Phone', 'Email', 'Start Month', 'Fixed Monthly Fee', 'Extra Fee', 'Total Billed', 'Total Paid', 'Final Balance Due', 'Pending Months Count'],
+      ['Client Name', 'Business Name', 'Phone', 'Email', 'Start Month', 'Fixed Monthly Fee', 'Income Tax Fee', 'Extra Fee', 'Total Billed', 'Total Paid', 'Final Balance Due', 'Pending Months Count'],
     ];
 
     state.clients.forEach(c => {
@@ -2785,6 +2847,7 @@ WHERE id = 'main_store';`;
         c.email || '',
         c.startMonth,
         c.fixedMonthlyAmount,
+        c.incomeTaxFee || 0,
         c.extraFee || 0,
         l.totalBilled,
         l.totalPaid,
