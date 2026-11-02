@@ -42,6 +42,11 @@
     activeClientId: null,
     searchQuery: '',
     statusFilter: 'all',
+    dashboardFilter: {
+      preset: 'all',
+      from: '',
+      to: '',
+    },
   };
 
   const STORAGE_KEY = 'clientledger_pro_data_v1';
@@ -1253,10 +1258,165 @@ WHERE id = 'main_store';`;
     }
   }
 
+  // ==================== DASHBOARD DATE RANGE FILTER ====================
+  function getPresetDateRange(preset) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0-indexed (0=Jan, 10=Nov)
+
+    if (preset === 'this-month') {
+      const yStr = String(year);
+      const mStr = String(month + 1).padStart(2, '0');
+      const lastDay = new Date(year, month + 1, 0).getDate();
+      return {
+        from: `${yStr}-${mStr}-01`,
+        to: `${yStr}-${mStr}-${String(lastDay).padStart(2, '0')}`,
+      };
+    }
+
+    if (preset === 'last-month') {
+      let lmYear = year;
+      let lmMonth = month - 1;
+      if (lmMonth < 0) {
+        lmMonth = 11;
+        lmYear -= 1;
+      }
+      const yStr = String(lmYear);
+      const mStr = String(lmMonth + 1).padStart(2, '0');
+      const lastDay = new Date(lmYear, lmMonth + 1, 0).getDate();
+      return {
+        from: `${yStr}-${mStr}-01`,
+        to: `${yStr}-${mStr}-${String(lastDay).padStart(2, '0')}`,
+      };
+    }
+
+    if (preset === 'last-3-months') {
+      let smYear = year;
+      let smMonth = month - 2;
+      if (smMonth < 0) {
+        smMonth += 12;
+        smYear -= 1;
+      }
+      const lastDay = new Date(year, month + 1, 0).getDate();
+      return {
+        from: `${smYear}-${String(smMonth + 1).padStart(2, '0')}-01`,
+        to: `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
+      };
+    }
+
+    if (preset === 'this-fy') {
+      const fyStartYear = month < 3 ? year - 1 : year;
+      const fyEndYear = fyStartYear + 1;
+      return {
+        from: `${fyStartYear}-04-01`,
+        to: `${fyEndYear}-03-31`,
+      };
+    }
+
+    if (preset === 'last-fy') {
+      const fyStartYear = (month < 3 ? year - 1 : year) - 1;
+      const fyEndYear = fyStartYear + 1;
+      return {
+        from: `${fyStartYear}-04-01`,
+        to: `${fyEndYear}-03-31`,
+      };
+    }
+
+    if (preset === 'this-year') {
+      return {
+        from: `${year}-01-01`,
+        to: `${year}-12-31`,
+      };
+    }
+
+    return { from: '', to: '' };
+  }
+
+  function onDashboardPresetChange(preset) {
+    if (!state.dashboardFilter) {
+      state.dashboardFilter = { preset: 'all', from: '', to: '' };
+    }
+    state.dashboardFilter.preset = preset;
+
+    if (preset === 'all') {
+      state.dashboardFilter.from = '';
+      state.dashboardFilter.to = '';
+      const fromInput = document.getElementById('dashboard-filter-from');
+      const toInput = document.getElementById('dashboard-filter-to');
+      if (fromInput) fromInput.value = '';
+      if (toInput) toInput.value = '';
+      renderDashboard();
+      return;
+    }
+
+    if (preset === 'custom') {
+      const fromInput = document.getElementById('dashboard-filter-from');
+      if (fromInput) fromInput.focus();
+      return;
+    }
+
+    const range = getPresetDateRange(preset);
+    state.dashboardFilter.from = range.from;
+    state.dashboardFilter.to = range.to;
+
+    const fromInput = document.getElementById('dashboard-filter-from');
+    const toInput = document.getElementById('dashboard-filter-to');
+    if (fromInput) fromInput.value = range.from;
+    if (toInput) toInput.value = range.to;
+
+    renderDashboard();
+  }
+
+  function onDashboardDateInputChange() {
+    const fromVal = document.getElementById('dashboard-filter-from')?.value || '';
+    const toVal = document.getElementById('dashboard-filter-to')?.value || '';
+    const presetSelect = document.getElementById('dashboard-date-preset');
+
+    if (!fromVal && !toVal) {
+      if (presetSelect) presetSelect.value = 'all';
+      if (!state.dashboardFilter) state.dashboardFilter = {};
+      state.dashboardFilter.preset = 'all';
+      state.dashboardFilter.from = '';
+      state.dashboardFilter.to = '';
+    } else {
+      if (presetSelect) presetSelect.value = 'custom';
+      if (!state.dashboardFilter) state.dashboardFilter = {};
+      state.dashboardFilter.preset = 'custom';
+      state.dashboardFilter.from = fromVal;
+      state.dashboardFilter.to = toVal;
+    }
+    renderDashboard();
+  }
+
+  function applyDashboardDateFilter() {
+    onDashboardDateInputChange();
+  }
+
+  function resetDashboardDateFilter() {
+    state.dashboardFilter = { preset: 'all', from: '', to: '' };
+    const presetSelect = document.getElementById('dashboard-date-preset');
+    const fromInput = document.getElementById('dashboard-filter-from');
+    const toInput = document.getElementById('dashboard-filter-to');
+    if (presetSelect) presetSelect.value = 'all';
+    if (fromInput) fromInput.value = '';
+    if (toInput) toInput.value = '';
+    renderDashboard();
+  }
+
   // ==================== DASHBOARD RENDERING ====================
   function renderDashboard() {
     // Render Business Profile Header in Dashboard
     updateBusinessProfileBanner();
+
+    const filter = state.dashboardFilter || { preset: 'all', from: '', to: '' };
+    const hasFilter = Boolean((filter.from && filter.from.trim()) || (filter.to && filter.to.trim()) || (filter.preset && filter.preset !== 'all'));
+
+    const fromDate = filter.from || '';
+    const toDate = filter.to || '';
+    const fromMonth = fromDate ? fromDate.slice(0, 7) : '';
+    const toMonth = toDate ? toDate.slice(0, 7) : '';
+    const fromYear = fromDate ? fromDate.slice(0, 4) : '';
+    const toYear = toDate ? toDate.slice(0, 4) : '';
 
     let totalBilledAll = 0;
     let totalPaidAll = 0;
@@ -1271,30 +1431,85 @@ WHERE id = 'main_store';`;
       const ledger = calculateClientLedger(c);
       if (!ledger) return;
 
-      totalBilledAll += ledger.totalBilled;
-      totalPaidAll += ledger.totalPaid;
-      totalBalanceAll += ledger.finalBalance;
       if (c.status === 'active') {
         monthlyRunrate += Number(c.fixedMonthlyAmount || 0);
       }
 
-      if (ledger.finalBalance > 0) {
-        pendingClientsCount++;
-        duesRows.push({
-          client: c,
-          ledger,
-        });
-      }
+      if (!hasFilter) {
+        // All-Time Cumulative Mode
+        totalBilledAll += ledger.totalBilled;
+        totalPaidAll += ledger.totalPaid;
+        totalBalanceAll += ledger.finalBalance;
 
-      // Collect payments
-      if (c.payments) {
-        c.payments.forEach(p => {
-          recentPaymentsList.push({
-            clientName: c.name,
-            clientId: c.id,
-            payment: p,
+        if (ledger.finalBalance > 0) {
+          pendingClientsCount++;
+          duesRows.push({
+            client: c,
+            ledger,
           });
-        });
+        }
+
+        if (c.payments) {
+          c.payments.forEach(p => {
+            recentPaymentsList.push({
+              clientName: c.name,
+              clientId: c.id,
+              payment: p,
+            });
+          });
+        }
+      } else {
+        // Date Range Filtered Mode
+        let clientPeriodBilled = 0;
+        let clientPeriodDue = 0;
+
+        if (c.billingCycle === 'yearly') {
+          const breakdown = ledger.yearlyBreakdown || [];
+          breakdown.forEach(row => {
+            const y = String(row.month);
+            if (fromYear && y < fromYear) return;
+            if (toYear && y > toYear) return;
+            clientPeriodBilled += Number(row.billed || 0);
+            clientPeriodDue += Math.max(0, Number(row.balance || 0));
+          });
+        } else {
+          const breakdown = ledger.monthlyBreakdown || [];
+          breakdown.forEach(row => {
+            const m = String(row.month);
+            if (fromMonth && m < fromMonth) return;
+            if (toMonth && m > toMonth) return;
+            clientPeriodBilled += Number(row.billed || 0);
+            clientPeriodDue += Math.max(0, Number(row.balance || 0));
+          });
+        }
+
+        totalBilledAll += clientPeriodBilled;
+        totalBalanceAll += clientPeriodDue;
+
+        if (clientPeriodDue > 0) {
+          pendingClientsCount++;
+          duesRows.push({
+            client: c,
+            ledger: {
+              ...ledger,
+              finalBalance: clientPeriodDue,
+            },
+          });
+        }
+
+        if (c.payments) {
+          c.payments.forEach(p => {
+            const pDate = p.date ? p.date.slice(0, 10) : '';
+            if (fromDate && pDate < fromDate) return;
+            if (toDate && pDate > toDate) return;
+            totalPaidAll += Number(p.amount) || 0;
+            recentPaymentsList.push({
+              clientName: c.name,
+              clientId: c.id,
+              payment: p,
+            });
+          });
+        }
       }
     });
 
@@ -1307,6 +1522,9 @@ WHERE id = 'main_store';`;
     const statCollectionRate = document.getElementById('stat-collection-rate');
     const statRunrate = document.getElementById('stat-monthly-runrate');
     const navClientCount = document.getElementById('nav-client-count');
+    const filterIndicator = document.getElementById('dashboard-filter-indicator');
+    const billedLabel = document.getElementById('stat-billed-label');
+    const billedSubtext = document.getElementById('stat-billed-subtext');
 
     if (statBalance) statBalance.textContent = formatCurrency(totalBalanceAll);
     if (statBilled) statBilled.textContent = formatCurrency(totalBilledAll);
@@ -1314,12 +1532,38 @@ WHERE id = 'main_store';`;
     if (statClients) statClients.textContent = state.clients.length;
     if (navClientCount) navClientCount.textContent = state.clients.length;
 
+    // Filter indicator badge
+    if (filterIndicator) {
+      if (!hasFilter) {
+        filterIndicator.textContent = 'Showing: All Time';
+        filterIndicator.className = 'text-[11px] font-semibold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200';
+      } else {
+        const fromStr = fromDate ? formatDate(fromDate) : 'Start';
+        const toStr = toDate ? formatDate(toDate) : 'Present';
+        filterIndicator.textContent = `Showing: ${fromStr} – ${toStr}`;
+        filterIndicator.className = 'text-[11px] font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200';
+      }
+    }
+
+    if (billedLabel) {
+      billedLabel.textContent = hasFilter ? 'Total Billed (Period)' : 'Total Billed (Cumulative)';
+    }
+    if (billedSubtext) {
+      billedSubtext.textContent = hasFilter ? 'Sum of fees in selected period' : 'Sum of monthly fixed & custom fees';
+    }
+
     if (statPendingClients) {
-      statPendingClients.textContent = `${pendingClientsCount} of ${state.clients.length} clients owe balance`;
+      statPendingClients.textContent = hasFilter
+        ? `${pendingClientsCount} clients with dues in period`
+        : `${pendingClientsCount} of ${state.clients.length} clients owe balance`;
     }
 
     const rate = totalBilledAll > 0 ? Math.round((totalPaidAll / totalBilledAll) * 100) : 0;
-    if (statCollectionRate) statCollectionRate.textContent = `${rate}% collection rate`;
+    if (statCollectionRate) {
+      statCollectionRate.textContent = hasFilter
+        ? `${rate}% collection rate in period`
+        : `${rate}% collection rate`;
+    }
     if (statRunrate) statRunrate.textContent = `${formatCurrency(monthlyRunrate)} / mo recurring base`;
 
     // Render Pending Dues Table
@@ -1330,6 +1574,10 @@ WHERE id = 'main_store';`;
       if (duesRows.length === 0) {
         duesTbody.innerHTML = '';
         duesEmpty.classList.remove('hidden');
+        const emptyMsg = duesEmpty.querySelector('p');
+        if (emptyMsg) {
+          emptyMsg.textContent = hasFilter ? 'No clients with pending dues in this selected date range.' : 'All clients are completely settled! Zero outstanding dues.';
+        }
       } else {
         duesEmpty.classList.add('hidden');
         // Sort by highest balance due descending
@@ -1349,7 +1597,7 @@ WHERE id = 'main_store';`;
               <td class="py-3 px-3 text-slate-600 font-medium">${formatCurrency(c.fixedMonthlyAmount)}/mo</td>
               <td class="py-3 px-3">
                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-                  ${l.unpaidMonthsCount} mo pending (since ${oldestName})
+                  ${hasFilter ? `Pending in period` : `${l.unpaidMonthsCount} mo pending (since ${oldestName})`}
                 </span>
               </td>
               <td class="py-3 px-3 text-right font-bold text-red-600">${formatCurrency(l.finalBalance)}</td>
@@ -3115,6 +3363,10 @@ WHERE id = 'main_store';`;
     showView,
     viewClientDetail,
     renderDashboard,
+    onDashboardPresetChange,
+    onDashboardDateInputChange,
+    applyDashboardDateFilter,
+    resetDashboardDateFilter,
     renderClientsList,
     renderClientDetail,
     renderMatrixView,

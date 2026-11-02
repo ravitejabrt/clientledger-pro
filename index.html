@@ -359,6 +359,66 @@
         </div>
       </div>
 
+      <!-- Date Range Filter Bar for Key Financial Metrics -->
+      <div class="bg-white rounded-xl p-3.5 sm:p-4 border border-slate-200/90 shadow-xs">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          
+          <!-- Left: Title & Filter Status Indicator -->
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            </div>
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-700">Financial Metrics Date Filter:</span>
+                <span id="dashboard-filter-indicator" class="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
+                  Showing: All Time
+                </span>
+              </div>
+              <p class="text-[11px] text-slate-400 mt-0.5">Filter Total Outstanding Due, Total Billed, and Total Collected</p>
+            </div>
+          </div>
+
+          <!-- Right: Presets & Date Inputs -->
+          <div class="flex items-center flex-wrap gap-2">
+            <!-- Preset Dropdown -->
+            <select id="dashboard-date-preset" onchange="app.onDashboardPresetChange(this.value)" class="text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-blue-500 focus:outline-none transition cursor-pointer">
+              <option value="all">📅 All Time (Cumulative)</option>
+              <option value="this-month">🗓 This Month</option>
+              <option value="last-month">🗓 Last Month</option>
+              <option value="last-3-months">📊 Last 3 Months</option>
+              <option value="this-fy">💼 This Financial Year</option>
+              <option value="last-fy">💼 Last Financial Year</option>
+              <option value="this-year">📆 This Calendar Year</option>
+              <option value="custom">⚙️ Custom Date Range</option>
+            </select>
+
+            <!-- From Date Input -->
+            <div class="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1">
+              <span class="text-[11px] font-semibold text-slate-500 uppercase">From:</span>
+              <input type="date" id="dashboard-filter-from" onchange="app.onDashboardDateInputChange()" class="text-xs py-0.5 px-1 bg-white border border-slate-200 rounded text-slate-700 focus:ring-1 focus:ring-blue-500 focus:outline-none">
+            </div>
+
+            <!-- To Date Input -->
+            <div class="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1">
+              <span class="text-[11px] font-semibold text-slate-500 uppercase">To:</span>
+              <input type="date" id="dashboard-filter-to" onchange="app.onDashboardDateInputChange()" class="text-xs py-0.5 px-1 bg-white border border-slate-200 rounded text-slate-700 focus:ring-1 focus:ring-blue-500 focus:outline-none">
+            </div>
+
+            <!-- Apply Button -->
+            <button type="button" onclick="app.applyDashboardDateFilter()" class="text-xs font-semibold px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition shadow-xs flex items-center gap-1">
+              <span>Apply</span>
+            </button>
+
+            <!-- Reset Button -->
+            <button type="button" onclick="app.resetDashboardDateFilter()" id="dashboard-filter-reset-btn" class="text-xs font-medium px-2.5 py-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg border border-slate-200 hover:border-red-200 transition" title="Reset to All Time">
+              Reset
+            </button>
+          </div>
+
+        </div>
+      </div>
+
       <!-- Key Financial Metrics Cards -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
@@ -379,14 +439,14 @@
         <!-- Total Billed All Time -->
         <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Billed (Cumulative)</span>
+            <span id="stat-billed-label" class="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Billed (Cumulative)</span>
             <div class="p-2 rounded-lg bg-blue-50 text-blue-600">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2zM10 8.5a.5.5 0 11-1 0 .5.5 0 011 0zm5 5a.5.5 0 11-1 0 .5.5 0 011 0z"/></svg>
             </div>
           </div>
           <div class="mt-3">
             <div id="stat-total-billed" class="text-2xl font-extrabold text-slate-800">₹0.00</div>
-            <p class="text-xs text-slate-500 mt-1">Sum of monthly fixed & custom fees</p>
+            <p class="text-xs text-slate-500 mt-1" id="stat-billed-subtext">Sum of monthly fixed & custom fees</p>
           </div>
         </div>
 
@@ -1456,6 +1516,6 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="app.js?v=2.9"></script>
+  <script src="app.js?v=3.0"></script>
 </body>
 </html>
