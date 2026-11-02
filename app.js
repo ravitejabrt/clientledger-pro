@@ -2029,10 +2029,16 @@ WHERE id = 'main_store';`;
               </td>
               <td class="py-3 px-4 text-xs font-mono text-slate-500">${escapeHtml(p.reference || '--')}</td>
               <td class="py-3 px-4 text-xs text-slate-600">${escapeHtml(p.note || '--')}</td>
-              <td class="py-3 px-4 text-right">
-                <button onclick="app.handleDeletePayment('${client.id}', '${p.id}')" class="text-xs text-red-500 hover:text-red-700 font-medium p-1 hover:bg-red-50 rounded transition" title="Delete payment entry">
-                  Delete
-                </button>
+              <td class="py-3 px-4 text-right whitespace-nowrap">
+                <div class="flex items-center justify-end gap-1.5">
+                  <button onclick="app.openEditPaymentModal('${client.id}', '${p.id}')" class="text-xs text-blue-600 hover:text-blue-800 font-semibold px-2 py-1 hover:bg-blue-50 rounded transition flex items-center gap-1" title="Edit this payment">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                    Edit
+                  </button>
+                  <button onclick="app.handleDeletePayment('${client.id}', '${p.id}')" class="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 hover:bg-red-50 rounded transition" title="Delete payment entry">
+                    Delete
+                  </button>
+                </div>
               </td>
             </tr>
           `;
@@ -2890,6 +2896,120 @@ WHERE id = 'main_store';`;
     }
   }
 
+  // Edit Payment Transaction
+  function openEditPaymentModal(clientId, paymentId) {
+    const client = state.clients.find(c => c.id === clientId);
+    if (!client || !client.payments) return;
+
+    const payment = client.payments.find(p => p.id === paymentId);
+    if (!payment) return;
+
+    document.getElementById('edit-payment-client-id').value = clientId;
+    document.getElementById('edit-payment-id').value = paymentId;
+
+    const nameEl = document.getElementById('edit-payment-client-name');
+    if (nameEl) {
+      nameEl.textContent = client.businessName ? `${client.businessName} (${client.name})` : client.name;
+    }
+
+    document.getElementById('edit-payment-amount').value = payment.amount ?? '';
+    document.getElementById('edit-payment-date').value = payment.date || '';
+    document.getElementById('edit-payment-method').value = payment.method || 'Cash';
+    document.getElementById('edit-payment-reference').value = payment.reference || '';
+    document.getElementById('edit-payment-note').value = payment.note || '';
+
+    // Populate target month options
+    const targetSelect = document.getElementById('edit-payment-target-month');
+    if (targetSelect) {
+      targetSelect.innerHTML = '<option value="">Automatic (Applies to Oldest Unpaid Months First - FIFO)</option>';
+      const isYearly = client.billingCycle === 'yearly';
+      const ledger = calculateClientLedger(client);
+
+      if (isYearly) {
+        (ledger.years || []).forEach(y => {
+          targetSelect.innerHTML += `<option value="${y}">Year ${y}</option>`;
+        });
+      } else {
+        (ledger.months || []).forEach(m => {
+          targetSelect.innerHTML += `<option value="${m}">${formatFullMonthName(m)}</option>`;
+        });
+      }
+      targetSelect.value = payment.targetMonth || '';
+    }
+
+    // Discount / Settlement details
+    const hasDiscount = Boolean(payment.isSettlement || (Number(payment.discount || 0) > 0));
+    const discountCheck = document.getElementById('edit-payment-is-settlement');
+    if (discountCheck) discountCheck.checked = hasDiscount;
+    toggleEditSettlementDiscount(hasDiscount);
+
+    const discountAmountInput = document.getElementById('edit-payment-discount-amount');
+    const discountNoteInput = document.getElementById('edit-payment-discount-note');
+    if (discountAmountInput) discountAmountInput.value = payment.discount || 0;
+    if (discountNoteInput) discountNoteInput.value = payment.discountNote || '';
+
+    openModal('editPaymentModal');
+  }
+
+  function toggleEditSettlementDiscount(isChecked) {
+    const container = document.getElementById('edit-payment-discount-container');
+    if (!container) return;
+    if (isChecked) {
+      container.classList.remove('hidden');
+    } else {
+      container.classList.add('hidden');
+    }
+  }
+
+  function handleSaveEditPayment(e) {
+    e.preventDefault();
+    const clientId = document.getElementById('edit-payment-client-id').value;
+    const paymentId = document.getElementById('edit-payment-id').value;
+
+    const client = state.clients.find(c => c.id === clientId);
+    if (!client || !client.payments) return;
+
+    const payment = client.payments.find(p => p.id === paymentId);
+    if (!payment) return;
+
+    const amount = Number(document.getElementById('edit-payment-amount').value);
+    const date = document.getElementById('edit-payment-date').value;
+    const method = document.getElementById('edit-payment-method').value;
+    const reference = document.getElementById('edit-payment-reference').value.trim();
+    const targetMonth = document.getElementById('edit-payment-target-month').value || null;
+    const note = document.getElementById('edit-payment-note').value.trim();
+
+    const isSettlement = !!document.getElementById('edit-payment-is-settlement')?.checked;
+    const discount = isSettlement ? (Number(document.getElementById('edit-payment-discount-amount')?.value) || 0) : 0;
+    const discountNote = isSettlement ? (document.getElementById('edit-payment-discount-note')?.value.trim() || '') : '';
+
+    if (isNaN(amount) || (amount <= 0 && discount <= 0) || !date) {
+      showToast('Please enter a valid payment amount and date', true);
+      return;
+    }
+
+    payment.amount = amount;
+    payment.date = date;
+    payment.method = method;
+    payment.reference = reference;
+    payment.targetMonth = targetMonth;
+    payment.note = note;
+    payment.isSettlement = isSettlement;
+    payment.discount = discount;
+    payment.discountNote = discountNote;
+    payment.updatedAt = new Date().toISOString();
+
+    saveData();
+    closeModal('editPaymentModal');
+    showToast('Payment transaction updated successfully!');
+
+    if (state.activeClientId === clientId) {
+      renderClientDetail(clientId);
+    } else {
+      renderDashboard();
+    }
+  }
+
   function handleDeletePayment(clientId, paymentId) {
     const client = state.clients.find(c => c.id === clientId);
     if (!client) return;
@@ -3316,6 +3436,7 @@ WHERE id = 'main_store';`;
     const allModals = [
       'addClientModal',
       'recordPaymentModal',
+      'editPaymentModal',
       'overrideMonthModal',
       'editClientModal',
       'printStatementModal',
@@ -3399,6 +3520,9 @@ WHERE id = 'main_store';`;
     onPaymentAmountInput,
     onSettlementDiscountInput,
     handleRecordPayment,
+    openEditPaymentModal,
+    handleSaveEditPayment,
+    toggleEditSettlementDiscount,
     handleDeletePayment,
     openPrintStatementModal,
     changeCurrency,

@@ -1108,6 +1108,101 @@
     </div>
   </div>
 
+  <!-- MODAL: EDIT PAYMENT TRANSACTION -->
+  <div id="editPaymentModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div class="bg-blue-50 px-6 py-4 border-b border-blue-100 flex justify-between items-center">
+        <div>
+          <h3 class="font-bold text-slate-900 text-base">Edit Payment Transaction</h3>
+          <p class="text-xs text-blue-700">Update payment amount, date, method, allocation or notes</p>
+        </div>
+        <button onclick="app.closeModal('editPaymentModal')" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+      </div>
+      <form onsubmit="app.handleSaveEditPayment(event)" class="p-6 space-y-4">
+        <input type="hidden" id="edit-payment-client-id">
+        <input type="hidden" id="edit-payment-id">
+
+        <!-- Client Info (Read-only banner) -->
+        <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Client:</span>
+          <div id="edit-payment-client-name" class="font-bold text-slate-800 text-sm mt-0.5">--</div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Amount Given *</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm font-bold current-currency-symbol">₹</span>
+              <input type="number" id="edit-payment-amount" required min="0" step="any" placeholder="1000" class="w-full text-sm pl-7 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none font-bold text-slate-800">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Payment Date *</label>
+            <input type="date" id="edit-payment-date" required class="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Payment Method</label>
+            <select id="edit-payment-method" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+              <option value="Cash">Cash</option>
+              <option value="Bank Transfer / NEFT">Bank Transfer / NEFT</option>
+              <option value="UPI / PhonePe / GPay">UPI / PhonePe / GPay</option>
+              <option value="Cheque">Cheque</option>
+              <option value="Credit / Debit Card">Credit / Debit Card</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Reference / Txn ID</label>
+            <input type="text" id="edit-payment-reference" placeholder="e.g. UPI-123456 / Chq-889" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Payment Allocation</label>
+          <select id="edit-payment-target-month" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            <option value="">Automatic (Applies to Oldest Unpaid Months First - FIFO)</option>
+            <!-- Dynamically populated with client's months -->
+          </select>
+          <p class="text-[10px] text-slate-400 mt-1">Change specific month or leave Automatic (FIFO).</p>
+        </div>
+
+        <!-- Optional Discount / Settlement section in edit -->
+        <div class="p-3 bg-amber-50/60 rounded-xl border border-amber-200/80 space-y-2">
+          <label class="inline-flex items-center space-x-2 cursor-pointer select-none">
+            <input type="checkbox" id="edit-payment-is-settlement" onchange="app.toggleEditSettlementDiscount(this.checked)" class="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer">
+            <span class="text-xs font-bold text-amber-950">Discount / Waiver Given</span>
+          </label>
+          <div id="edit-payment-discount-container" class="hidden grid grid-cols-2 gap-3 pt-2 border-t border-amber-200">
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1">Discount Amount</label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-2.5 flex items-center text-slate-400 text-xs font-bold current-currency-symbol">₹</span>
+                <input type="number" id="edit-payment-discount-amount" min="0" step="any" placeholder="0" class="w-full text-sm pl-6 pr-2.5 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none font-bold text-amber-800">
+              </div>
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1">Discount Reason</label>
+              <input type="text" id="edit-payment-discount-note" placeholder="Reason" class="w-full text-sm px-2.5 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none">
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Remarks / Note</label>
+          <input type="text" id="edit-payment-note" placeholder="e.g. Part payment given by cash" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        </div>
+
+        <div class="pt-2 flex justify-end gap-2">
+          <button type="button" onclick="app.closeModal('editPaymentModal')" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Cancel</button>
+          <button type="submit" class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold shadow-sm">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- MODAL 3: OVERRIDE MONTHLY PAYMENT (Change fee for a particular month) -->
   <div id="overrideMonthModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -1516,6 +1611,6 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="app.js?v=3.0"></script>
+  <script src="app.js?v=3.1"></script>
 </body>
 </html>
