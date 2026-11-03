@@ -130,6 +130,70 @@
     return a.localeCompare(b);
   }
 
+  // ==================== CLIENT ON HOLD ENGINE ====================
+  function isClientOnHoldInMonth(client, monthStr) {
+    if (!client || !monthStr) return null;
+
+    // Check client.holds array
+    if (Array.isArray(client.holds) && client.holds.length > 0) {
+      for (const h of client.holds) {
+        if (!h.fromMonth) continue;
+        const afterFrom = compareMonths(monthStr, h.fromMonth) >= 0;
+        const beforeTo = !h.toMonth || compareMonths(monthStr, h.toMonth) <= 0;
+        if (afterFrom && beforeTo) {
+          return h;
+        }
+      }
+    }
+
+    // Check top-level client fields
+    if (client.status === 'hold' || client.holdFrom) {
+      const fromM = client.holdFrom || client.startMonth;
+      const toM = client.holdTo;
+      const afterFrom = !fromM || compareMonths(monthStr, fromM) >= 0;
+      const beforeTo = !toM || compareMonths(monthStr, toM) <= 0;
+      if (afterFrom && beforeTo) {
+        return {
+          fromMonth: fromM,
+          toMonth: toM,
+          reason: client.holdReason || 'Client on hold / services paused',
+          notes: client.holdNotes || '',
+        };
+      }
+    }
+
+    return null;
+  }
+
+  function isClientCurrentlyOnHold(client) {
+    if (!client) return false;
+    const currentMonth = getTodayDate().slice(0, 7);
+
+    if (client.status === 'hold') {
+      if (client.holdTo && compareMonths(currentMonth, client.holdTo) > 0) {
+        return false; // Hold date has already passed
+      }
+      return true;
+    }
+
+    if (Array.isArray(client.holds) && client.holds.length > 0) {
+      return client.holds.some(h => {
+        if (!h.fromMonth) return false;
+        const afterFrom = compareMonths(currentMonth, h.fromMonth) >= 0;
+        const beforeTo = !h.toMonth || compareMonths(currentMonth, h.toMonth) <= 0;
+        return afterFrom && beforeTo;
+      });
+    }
+
+    if (client.holdFrom) {
+      const afterFrom = compareMonths(currentMonth, client.holdFrom) >= 0;
+      const beforeTo = !client.holdTo || compareMonths(currentMonth, client.holdTo) <= 0;
+      return afterFrom && beforeTo;
+    }
+
+    return false;
+  }
+
   // ==================== CALCULATION ENGINE ====================
   /**
    * Calculates the full financial ledger for a client:
@@ -207,9 +271,16 @@
       const itFeeAmt = (isStartYear && Number(client.incomeTaxFee || 0) > 0) ? Number(client.incomeTaxFee) : 0;
       const combinedFees = extraFeeAmt + itFeeAmt;
 
+      const holdInfo = isClientOnHoldInMonth(client, `${y}-01`) || isClientOnHoldInMonth(client, String(y));
+      const isHold = !!holdInfo;
+      const holdReason = holdInfo ? (holdInfo.reason || client.holdReason || 'Client on hold') : '';
+
       if (isOverridden) {
         billed = Number(override.amount);
         overrideNote = override.note || '';
+      } else if (isHold) {
+        billed = 0;
+        overrideNote = `⏸️ On Hold (${holdReason})`;
       } else {
         billed = Number(client.fixedYearlyAmount || client.fixedMonthlyAmount || 0) + combinedFees;
         if (combinedFees > 0) {
@@ -241,7 +312,9 @@
       const balance = billed - totalYearPaid;
 
       let status = 'UNPAID';
-      if (balance <= 0) {
+      if (isHold && billed === 0 && totalYearPaid === 0) {
+        status = 'HOLD';
+      } else if (balance <= 0) {
         status = totalYearPaid > billed ? 'OVERPAID' : 'PAID';
       } else if (totalYearPaid > 0) {
         status = 'PARTIAL';
@@ -252,6 +325,8 @@
         monthName: `Year ${y}`,
         fullMonthName: `Year ${y}`,
         billed,
+        isHold,
+        holdReason,
         isOverridden,
         overrideNote,
         defaultFee: Number(client.fixedYearlyAmount || client.fixedMonthlyAmount || 0),
@@ -349,9 +424,16 @@
       const itFeeAmt = (isStartMonth && Number(client.incomeTaxFee || 0) > 0) ? Number(client.incomeTaxFee) : 0;
       const combinedFees = extraFeeAmt + itFeeAmt;
 
+      const holdInfo = isClientOnHoldInMonth(client, m);
+      const isHold = !!holdInfo;
+      const holdReason = holdInfo ? (holdInfo.reason || client.holdReason || 'Client on hold') : '';
+
       if (isOverridden) {
         billed = Number(override.amount);
         overrideNote = override.note || '';
+      } else if (isHold) {
+        billed = 0;
+        overrideNote = `⏸️ On Hold (${holdReason})`;
       } else {
         billed = Number(client.fixedMonthlyAmount || 0) + combinedFees;
         if (combinedFees > 0) {
@@ -385,7 +467,9 @@
       const balance = billed - totalMonthPaid;
 
       let status = 'UNPAID';
-      if (balance <= 0) {
+      if (isHold && billed === 0 && totalMonthPaid === 0) {
+        status = 'HOLD';
+      } else if (balance <= 0) {
         status = totalMonthPaid > billed ? 'OVERPAID' : 'PAID';
       } else if (totalMonthPaid > 0) {
         status = 'PARTIAL';
@@ -396,6 +480,8 @@
         monthName: formatMonthName(m),
         fullMonthName: formatFullMonthName(m),
         billed,
+        isHold,
+        holdReason,
         isOverridden,
         overrideNote,
         defaultFee: Number(client.fixedMonthlyAmount || 0),
@@ -1445,11 +1531,15 @@ WHERE id = 'main_store';`;
     const duesRows = [];
     const recentPaymentsList = [];
 
+    const onHoldClients = state.clients.filter(c => isClientCurrentlyOnHold(c) || c.status === 'hold');
+    const activeClients = state.clients.filter(c => !isClientCurrentlyOnHold(c) && c.status !== 'inactive' && c.status !== 'hold');
+
     state.clients.forEach(c => {
       const ledger = calculateClientLedger(c);
       if (!ledger) return;
 
-      if (c.status === 'active') {
+      const isCurrentlyHold = isClientCurrentlyOnHold(c) || c.status === 'hold';
+      if (c.status === 'active' && !isCurrentlyHold) {
         monthlyRunrate += Number(c.fixedMonthlyAmount || 0);
       }
 
@@ -1582,7 +1672,13 @@ WHERE id = 'main_store';`;
         ? `${rate}% collection rate in period`
         : `${rate}% collection rate`;
     }
-    if (statRunrate) statRunrate.textContent = `${formatCurrency(monthlyRunrate)} / mo recurring base`;
+    if (statRunrate) {
+      if (onHoldClients.length > 0) {
+        statRunrate.innerHTML = `${formatCurrency(monthlyRunrate)} / mo <span class="text-amber-600 font-bold text-[11px]">(${onHoldClients.length} on hold)</span>`;
+      } else {
+        statRunrate.textContent = `${formatCurrency(monthlyRunrate)} / mo recurring base`;
+      }
+    }
 
     // Render Pending Dues Table
     const duesTbody = document.getElementById('dashboard-dues-tbody');
@@ -1701,12 +1797,18 @@ WHERE id = 'main_store';`;
     }
 
     // Status filter
-    if (state.statusFilter === 'due') {
+    if (state.statusFilter === 'active') {
+      filtered = filtered.filter(item => !isClientCurrentlyOnHold(item.client) && item.client.status !== 'inactive' && item.client.status !== 'hold');
+    } else if (state.statusFilter === 'hold') {
+      filtered = filtered.filter(item => isClientCurrentlyOnHold(item.client) || item.client.status === 'hold');
+    } else if (state.statusFilter === 'due') {
       filtered = filtered.filter(item => item.ledger.finalBalance > 0);
     } else if (state.statusFilter === 'settled') {
       filtered = filtered.filter(item => item.ledger.finalBalance === 0);
     } else if (state.statusFilter === 'advance') {
       filtered = filtered.filter(item => item.ledger.finalBalance < 0);
+    } else if (state.statusFilter === 'inactive') {
+      filtered = filtered.filter(item => item.client.status === 'inactive');
     }
 
     if (filtered.length === 0) {
@@ -1720,9 +1822,12 @@ WHERE id = 'main_store';`;
       .map(item => {
         const c = item.client;
         const l = item.ledger;
+        const isClientHold = isClientCurrentlyOnHold(c) || c.status === 'hold';
 
         let statusBadge = '';
-        if (l.finalBalance > 0) {
+        if (isClientHold) {
+          statusBadge = `<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">⏸️ On Hold</span>`;
+        } else if (l.finalBalance > 0) {
           statusBadge = `<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800 border border-red-200">Pending Due (${l.unpaidMonthsCount} mo)</span>`;
         } else if (l.finalBalance === 0) {
           statusBadge = `<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">Fully Settled</span>`;
@@ -1744,12 +1849,14 @@ WHERE id = 'main_store';`;
         return `
         <tr class="hover:bg-slate-50 transition">
           <td class="py-3 px-4 cursor-pointer" onclick="app.viewClientDetail('${c.id}')">
-            <div class="font-bold text-slate-900 hover:text-blue-600 flex items-center gap-1.5">
+            <div class="font-bold text-slate-900 hover:text-blue-600 flex items-center gap-1.5 flex-wrap">
               <span>${escapeHtml(c.businessName || c.name)}</span>
+              ${isClientHold ? `<span class="text-[10px] bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.2 rounded font-bold">⏸️ On Hold</span>` : ''}
               ${c.status === 'inactive' ? '<span class="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.2 rounded font-normal">Inactive</span>' : ''}
               ${isYearly ? '<span class="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">Yearly</span>' : ''}
             </div>
             ${c.businessName ? `<div class="text-xs text-blue-700 font-medium mt-0.5">👤 Contact: ${escapeHtml(c.name)}</div>` : ''}
+            ${isClientHold && c.holdReason ? `<div class="text-xs text-amber-700 italic mt-0.5">⏸️ Hold: ${escapeHtml(c.holdReason)}</div>` : ''}
             ${c.phone ? `<div class="text-xs text-slate-600 mt-0.5">📞 ${escapeHtml(c.phone)}</div>` : ''}
             ${c.hasGst && c.gstNumber ? `<div class="mt-0.5 font-mono text-[10px] font-semibold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200 inline-block">GST: ${escapeHtml(c.gstNumber)}</div>` : ''}
             ${c.email ? `<div class="text-xs text-slate-400 mt-0.5">✉️ ${escapeHtml(c.email)}</div>` : ''}
@@ -1764,6 +1871,9 @@ WHERE id = 'main_store';`;
             <div class="flex items-center justify-end gap-1.5">
               <button onclick="app.viewClientDetail('${c.id}')" class="px-2.5 py-1 text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg transition" title="View Month-by-Month Balance">
                 View Ledger
+              </button>
+              <button onclick="app.openHoldClientModal('${c.id}')" class="px-2 py-1 text-xs font-semibold ${isClientHold ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'} rounded-lg transition" title="Put Client on Hold / Manage Hold">
+                ${isClientHold ? '⏸️ Hold' : '⏸️'}
               </button>
               <button onclick="app.openRecordPaymentModal('${c.id}')" class="px-2.5 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg transition" title="Record Payment">
                 + Pay
@@ -1858,13 +1968,46 @@ WHERE id = 'main_store';`;
     if (notesEl) {
       notesEl.textContent = client.notes ? `Notes: ${client.notes}` : 'No notes provided.';
     }
+    const isCurrentlyHold = isClientCurrentlyOnHold(client) || client.status === 'hold';
     if (statusBadge) {
-      if (client.status === 'inactive') {
+      if (isCurrentlyHold) {
+        statusBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200 inline-flex items-center gap-1';
+        statusBadge.innerHTML = '<span>⏸️</span> <span>On Hold (Paused)</span>';
+      } else if (client.status === 'inactive') {
         statusBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-200 text-slate-700';
-        statusBadge.textContent = 'Inactive / Paused';
+        statusBadge.textContent = 'Inactive / Archived';
       } else {
         statusBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800';
-        statusBadge.textContent = 'Active Client';
+        statusBadge.textContent = '✓ Active Client';
+      }
+    }
+
+    const holdBtn = document.getElementById('detail-hold-btn');
+    const holdBtnText = document.getElementById('detail-hold-btn-text');
+    if (holdBtn && holdBtnText) {
+      if (isCurrentlyHold) {
+        holdBtn.className = 'px-3 py-1.5 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-lg flex items-center gap-1.5 shadow-sm transition';
+        holdBtnText.textContent = 'Manage Hold / Resume';
+      } else {
+        holdBtn.className = 'px-3 py-1.5 text-xs font-semibold bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-lg flex items-center gap-1.5 shadow-sm transition';
+        holdBtnText.textContent = 'Put on Hold';
+      }
+    }
+
+    const holdBanner = document.getElementById('detail-hold-banner');
+    const holdReasonBadge = document.getElementById('detail-hold-reason-badge');
+    const holdPeriodText = document.getElementById('detail-hold-period-text');
+    if (holdBanner) {
+      if (isCurrentlyHold) {
+        holdBanner.classList.remove('hidden');
+        if (holdReasonBadge) holdReasonBadge.textContent = client.holdReason || 'Services Paused';
+        if (holdPeriodText) {
+          const fromStr = client.holdFrom ? formatMonthName(client.holdFrom) : 'Current';
+          const toStr = client.holdTo ? formatMonthName(client.holdTo) : 'Indefinite / Until Resumed';
+          holdPeriodText.textContent = `Monthly recurring fees paused from ${fromStr} to ${toStr}. No fees are charged for hold months.`;
+        }
+      } else {
+        holdBanner.classList.add('hidden');
       }
     }
 
@@ -1973,7 +2116,25 @@ WHERE id = 'main_store';`;
         breakdownTbody.innerHTML = displayRows
           .map(row => {
           let feeTypeBadge = '';
-          if (row.isOverridden) {
+          let statusBadge = '';
+          let rowClass = '';
+          let balanceDisplay = '';
+
+          if (row.isHold && row.billed === 0) {
+            feeTypeBadge = `
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-200">
+                ⏸️ Fee Waived (Hold)
+                ${row.holdReason ? `&bull; <span class="italic text-[10px] max-w-[120px] truncate">${escapeHtml(row.holdReason)}</span>` : ''}
+              </span>
+            `;
+            statusBadge = `
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                ⏸️ On Hold
+              </span>
+            `;
+            rowClass = 'bg-amber-50/20';
+            balanceDisplay = `<span class="text-slate-400 font-medium">₹0.00</span>`;
+          } else if (row.isOverridden) {
             feeTypeBadge = `
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium badge-override cursor-pointer" onclick="app.openOverrideMonthModal('${client.id}', '${row.month}')" title="Click to edit override">
               Custom Fee
@@ -1986,40 +2147,38 @@ WHERE id = 'main_store';`;
           `;
           }
 
-          let statusBadge = '';
-          let rowClass = '';
-          let balanceDisplay = '';
-
-          if (row.balance <= 0) {
-            statusBadge = `
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold badge-paid">
-              ✓ Fully Paid
-            </span>
-          `;
-            balanceDisplay = `<span class="text-slate-400 font-medium">₹0.00</span>`;
-            if (row.status === 'OVERPAID') {
+          if (!(row.isHold && row.billed === 0)) {
+            if (row.balance <= 0) {
               statusBadge = `
-              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold badge-advance">
-                + Surplus Paid
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold badge-paid">
+                ✓ Fully Paid
               </span>
             `;
+              balanceDisplay = `<span class="text-slate-400 font-medium">₹0.00</span>`;
+              if (row.status === 'OVERPAID') {
+                statusBadge = `
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold badge-advance">
+                  + Surplus Paid
+                </span>
+              `;
+              }
+            } else if (row.paid > 0) {
+              statusBadge = `
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold badge-partial">
+                Partially Paid
+              </span>
+            `;
+              rowClass = 'bg-amber-50/40';
+              balanceDisplay = `<span class="text-amber-700 font-bold">${formatCurrency(row.balance)} due</span>`;
+            } else {
+              statusBadge = `
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold badge-unpaid">
+                Unpaid
+              </span>
+            `;
+              rowClass = 'bg-red-50/30';
+              balanceDisplay = `<span class="text-red-600 font-bold">${formatCurrency(row.balance)} due</span>`;
             }
-          } else if (row.paid > 0) {
-            statusBadge = `
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold badge-partial">
-              Partially Paid
-            </span>
-          `;
-            rowClass = 'bg-amber-50/40';
-            balanceDisplay = `<span class="text-amber-700 font-bold">${formatCurrency(row.balance)} due</span>`;
-          } else {
-            statusBadge = `
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold badge-unpaid">
-              Unpaid
-            </span>
-          `;
-            rowClass = 'bg-red-50/30';
-            balanceDisplay = `<span class="text-red-600 font-bold">${formatCurrency(row.balance)} due</span>`;
           }
 
           return `
@@ -2056,6 +2215,13 @@ WHERE id = 'main_store';`;
                         Print
                       </button>
                     `
+                    : ''
+                }
+                ${
+                  row.isHold
+                    ? `<button onclick="app.openHoldClientModal('${client.id}')" class="px-2 py-1 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded transition" title="Manage Hold Period">
+                        Hold Info
+                       </button>`
                     : ''
                 }
                 <button onclick="app.openOverrideMonthModal('${client.id}', '${row.month}')" class="px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-50 rounded transition" title="Change payment amount for ${row.fullMonthName}">
@@ -2455,10 +2621,44 @@ WHERE id = 'main_store';`;
 
     document.getElementById('edit-client-phone').value = client.phone || '';
     document.getElementById('edit-client-email').value = client.email || '';
-    document.getElementById('edit-client-status').value = client.status || 'active';
+    
+    const statusSelect = document.getElementById('edit-client-status');
+    const clientStatus = client.status || 'active';
+    if (statusSelect) statusSelect.value = clientStatus;
+
+    const holdFields = document.getElementById('edit-client-hold-fields');
+    const holdFromInput = document.getElementById('edit-client-hold-from');
+    const holdToInput = document.getElementById('edit-client-hold-to');
+    const holdReasonInput = document.getElementById('edit-client-hold-reason');
+
+    if (holdFromInput) holdFromInput.value = client.holdFrom || '';
+    if (holdToInput) holdToInput.value = client.holdTo || '';
+    if (holdReasonInput) holdReasonInput.value = client.holdReason || '';
+
+    if (holdFields) {
+      if (clientStatus === 'hold') holdFields.classList.remove('hidden');
+      else holdFields.classList.add('hidden');
+    }
+
     document.getElementById('edit-client-notes').value = client.notes || '';
 
     openModal('editClientModal');
+  }
+
+  function onEditClientStatusChange() {
+    const status = document.getElementById('edit-client-status')?.value;
+    const holdFields = document.getElementById('edit-client-hold-fields');
+    if (holdFields) {
+      if (status === 'hold') {
+        holdFields.classList.remove('hidden');
+        const holdFromInput = document.getElementById('edit-client-hold-from');
+        if (holdFromInput && !holdFromInput.value) {
+          holdFromInput.value = getCurrentYearMonth();
+        }
+      } else {
+        holdFields.classList.add('hidden');
+      }
+    }
   }
 
   function handleSaveEditClient(e) {
@@ -2512,7 +2712,24 @@ WHERE id = 'main_store';`;
 
     client.phone = document.getElementById('edit-client-phone').value.trim();
     client.email = document.getElementById('edit-client-email').value.trim();
-    client.status = document.getElementById('edit-client-status').value;
+    const newStatus = document.getElementById('edit-client-status').value;
+    client.status = newStatus;
+    if (newStatus === 'hold') {
+      const fromM = document.getElementById('edit-client-hold-from')?.value || client.holdFrom || getCurrentYearMonth();
+      const toM = document.getElementById('edit-client-hold-to')?.value || '';
+      const reasonM = document.getElementById('edit-client-hold-reason')?.value.trim() || client.holdReason || 'Client on hold';
+      client.holdFrom = fromM;
+      client.holdTo = toM;
+      client.holdReason = reasonM;
+      if (!Array.isArray(client.holds)) client.holds = [];
+      client.holds.push({
+        id: 'hold_' + Date.now(),
+        fromMonth: fromM,
+        toMonth: toM || null,
+        reason: reasonM,
+        createdAt: new Date().toISOString(),
+      });
+    }
     client.notes = document.getElementById('edit-client-notes').value.trim();
 
     saveData();
@@ -2532,6 +2749,176 @@ WHERE id = 'main_store';`;
       showToast(`Client "${client.name}" deleted`);
       showView('clients');
     }
+  }
+
+  // ==================== HOLD CLIENT / PAUSE BILLING ====================
+  function openHoldClientModal(clientId = null) {
+    const cId = clientId || state.activeClientId;
+    const client = state.clients.find(c => String(c.id) === String(cId));
+    if (!client) {
+      showToast('Client not found', true);
+      return;
+    }
+    state.activeClientId = client.id;
+
+    const nameEl = document.getElementById('hold-modal-client-name');
+    const statusEl = document.getElementById('hold-modal-current-status');
+    const radioHold = document.getElementById('hold-action-hold');
+    const radioActive = document.getElementById('hold-action-active');
+    const fromInput = document.getElementById('hold-from-month-input');
+    const toInput = document.getElementById('hold-to-month-input');
+    const reasonInput = document.getElementById('hold-reason-input');
+    const notesInput = document.getElementById('hold-notes-input');
+    const resumeBtn = document.getElementById('hold-modal-resume-btn');
+    const submitBtn = document.getElementById('hold-modal-submit-btn');
+
+    if (nameEl) nameEl.textContent = client.businessName ? `${client.businessName} (${client.name})` : client.name;
+
+    const isHold = isClientCurrentlyOnHold(client) || client.status === 'hold';
+
+    if (statusEl) {
+      if (isHold) {
+        statusEl.className = 'text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-200';
+        statusEl.textContent = '⏸️ Currently On Hold';
+      } else {
+        statusEl.className = 'text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200';
+        statusEl.textContent = '✓ Currently Active';
+      }
+    }
+
+    if (radioHold && radioActive) {
+      radioHold.checked = true; // default to hold mode
+    }
+
+    if (fromInput) {
+      fromInput.value = client.holdFrom || getCurrentYearMonth();
+    }
+    if (toInput) {
+      toInput.value = client.holdTo || '';
+    }
+    if (reasonInput) {
+      reasonInput.value = client.holdReason || (isHold ? '' : 'Travelled to another country / abroad');
+    }
+    if (notesInput) {
+      notesInput.value = client.holdNotes || '';
+    }
+
+    if (resumeBtn) {
+      if (isHold) {
+        resumeBtn.classList.remove('hidden');
+      } else {
+        resumeBtn.classList.add('hidden');
+      }
+    }
+
+    if (submitBtn) {
+      submitBtn.textContent = isHold ? 'Update Hold Settings' : 'Put Client on Hold';
+    }
+
+    onHoldActionTypeChange();
+    openModal('holdClientModal');
+  }
+
+  function onHoldActionTypeChange() {
+    const isHold = document.getElementById('hold-action-hold')?.checked;
+    const container = document.getElementById('hold-fields-container');
+    const submitBtn = document.getElementById('hold-modal-submit-btn');
+    if (container) {
+      if (isHold) {
+        container.classList.remove('hidden');
+        if (submitBtn) submitBtn.textContent = 'Save Hold Details';
+      } else {
+        container.classList.add('hidden');
+        if (submitBtn) submitBtn.textContent = 'Set Client as Active';
+      }
+    }
+  }
+
+  function setHoldReasonPreset(presetText) {
+    const input = document.getElementById('hold-reason-input');
+    if (input) {
+      input.value = presetText;
+      input.focus();
+    }
+  }
+
+  function handleSaveHoldClient(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const client = state.clients.find(c => String(c.id) === String(state.activeClientId));
+    if (!client) return;
+
+    const actionType = document.querySelector('input[name="hold-action-type"]:checked')?.value || 'hold';
+
+    if (actionType === 'active') {
+      // Resume client to active status
+      client.status = 'active';
+      if (client.holdFrom && !client.holdTo) {
+        client.holdTo = getLastMonth();
+      }
+      saveData();
+      closeModal('holdClientModal');
+      showToast(`Client "${client.name}" is now Active. Normal billing resumed.`);
+      renderClientDetail(client.id);
+      renderClientsList();
+      renderDashboard();
+      return;
+    }
+
+    const fromMonth = document.getElementById('hold-from-month-input')?.value;
+    const toMonth = document.getElementById('hold-to-month-input')?.value || '';
+    const reason = document.getElementById('hold-reason-input')?.value.trim() || 'Client on hold';
+    const notes = document.getElementById('hold-notes-input')?.value.trim() || '';
+
+    if (!fromMonth) {
+      showToast('Please select a Hold Start Month', true);
+      return;
+    }
+
+    if (toMonth && compareMonths(toMonth, fromMonth) < 0) {
+      showToast('Hold Until Month cannot be earlier than Hold Start Month', true);
+      return;
+    }
+
+    client.status = 'hold';
+    client.holdFrom = fromMonth;
+    client.holdTo = toMonth;
+    client.holdReason = reason;
+    client.holdNotes = notes;
+
+    if (!Array.isArray(client.holds)) client.holds = [];
+    client.holds.push({
+      id: 'hold_' + Date.now(),
+      fromMonth,
+      toMonth: toMonth || null,
+      reason,
+      notes,
+      createdAt: new Date().toISOString(),
+    });
+
+    saveData();
+    closeModal('holdClientModal');
+    const periodStr = toMonth ? `from ${formatMonthName(fromMonth)} to ${formatMonthName(toMonth)}` : `from ${formatMonthName(fromMonth)} onwards`;
+    showToast(`Client "${client.name}" placed on hold ${periodStr}.`);
+    renderClientDetail(client.id);
+    renderClientsList();
+    renderDashboard();
+  }
+
+  function resumeClientQuick(clientId = null) {
+    const cId = clientId || state.activeClientId;
+    const client = state.clients.find(c => String(c.id) === String(cId));
+    if (!client) return;
+
+    client.status = 'active';
+    if (client.holdFrom && !client.holdTo) {
+      client.holdTo = getLastMonth();
+    }
+    saveData();
+    closeModal('holdClientModal');
+    showToast(`Client "${client.name}" resumed! Normal monthly billing is active.`);
+    renderClientDetail(client.id);
+    renderClientsList();
+    renderDashboard();
   }
 
   // Business Profile Settings
@@ -4128,6 +4515,7 @@ WHERE id = 'main_store';`;
       'editPaymentModal',
       'overrideMonthModal',
       'editClientModal',
+      'holdClientModal',
       'printStatementModal',
       'paymentReceiptModal',
       'pendingInvoiceModal',
@@ -4190,7 +4578,15 @@ WHERE id = 'main_store';`;
     handleAddClient,
     openEditClientModal,
     handleSaveEditClient,
+    onEditClientStatusChange,
     handleDeleteClient,
+    openHoldClientModal,
+    onHoldActionTypeChange,
+    setHoldReasonPreset,
+    handleSaveHoldClient,
+    resumeClientQuick,
+    isClientCurrentlyOnHold,
+    isClientOnHoldInMonth,
     openEditBusinessProfileModal,
     handleSaveBusinessProfile,
     openCloudDatabaseModal,

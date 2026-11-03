@@ -44,7 +44,7 @@
   <script src="config.js"></script>
 
   <!-- Custom Styling & Print Rules -->
-  <link rel="stylesheet" href="styles.css?v=3.6">
+  <link rel="stylesheet" href="styles.css?v=3.7">
 </head>
 <body class="bg-slate-50 text-slate-900 antialiased min-h-screen flex flex-col font-sans">
 
@@ -555,11 +555,14 @@
 
         <!-- Filter Status Dropdown -->
         <div class="flex items-center gap-2">
-          <select id="client-status-filter" onchange="app.filterClients()" class="text-sm bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="all">All Statuses</option>
+          <select id="client-status-filter" onchange="app.filterClients()" class="text-sm bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium">
+            <option value="all">All Clients</option>
+            <option value="active">Active Clients Only</option>
+            <option value="hold">⏸️ On Hold Clients Only</option>
             <option value="due">Has Pending Balance</option>
             <option value="settled">Fully Settled (₹0)</option>
             <option value="advance">Has Advance Payment</option>
+            <option value="inactive">Inactive Clients</option>
           </select>
 
           <!-- Add Client Button -->
@@ -612,6 +615,9 @@
           Back to Clients
         </button>
         <div class="flex items-center gap-2 no-print">
+          <button id="detail-hold-btn" onclick="app.openHoldClientModal()" class="px-3 py-1.5 text-xs font-semibold bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-lg flex items-center gap-1.5 shadow-sm transition">
+            <span>⏸️</span> <span id="detail-hold-btn-text">Put on Hold</span>
+          </button>
           <button onclick="app.openPrintStatementModal()" class="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm">
             <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
             Print Statement / Invoice
@@ -672,6 +678,34 @@
             </div>
           </div>
 
+        </div>
+
+        <!-- Active Hold Notification Banner -->
+        <div id="detail-hold-banner" class="hidden mt-4 pt-3.5 border-t border-amber-200 bg-amber-50/90 -mx-6 -mb-6 p-4 rounded-b-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-start sm:items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-amber-200/80 border border-amber-300 text-amber-900 flex items-center justify-center text-lg font-bold shrink-0">
+              ⏸️
+            </div>
+            <div>
+              <div class="text-xs font-bold text-amber-950 flex flex-wrap items-center gap-2">
+                <span>Client is currently ON HOLD:</span>
+                <span id="detail-hold-reason-badge" class="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[11px] font-bold">
+                  Travelled abroad
+                </span>
+              </div>
+              <p id="detail-hold-period-text" class="text-xs text-amber-800 mt-0.5">
+                Monthly billing paused. No dues are charged for hold months.
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <button type="button" onclick="app.openHoldClientModal()" class="px-3 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold transition shadow-2xs">
+              Manage Hold
+            </button>
+            <button type="button" onclick="app.resumeClientQuick()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-2xs transition flex items-center gap-1">
+              <span>▶️</span> <span>Resume Client Now</span>
+            </button>
+          </div>
         </div>
 
         <!-- Quick Action Bar -->
@@ -1464,10 +1498,27 @@
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Status</label>
-          <select id="edit-client-status" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+          <select id="edit-client-status" onchange="app.onEditClientStatusChange()" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
             <option value="active">Active (Ongoing monthly recurring billing)</option>
-            <option value="inactive">Inactive / Paused</option>
+            <option value="hold">⏸️ On Hold (Services paused / Client abroad)</option>
+            <option value="inactive">Inactive / Archived</option>
           </select>
+        </div>
+        <div id="edit-client-hold-fields" class="hidden p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-3">
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[11px] font-bold text-amber-900 uppercase">Hold From Month *</label>
+              <input type="month" id="edit-client-hold-from" class="w-full text-xs px-2.5 py-1.5 border border-amber-300 rounded-lg bg-white">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-amber-900 uppercase">Hold Until Month</label>
+              <input type="month" id="edit-client-hold-to" class="w-full text-xs px-2.5 py-1.5 border border-amber-300 rounded-lg bg-white">
+            </div>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-amber-900 uppercase mb-0.5">Reason for Hold</label>
+            <input type="text" id="edit-client-hold-reason" placeholder="e.g. Travelled to another country" class="w-full text-xs px-2.5 py-1.5 border border-amber-300 rounded-lg bg-white">
+          </div>
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Notes</label>
@@ -1482,6 +1533,122 @@
             <button type="submit" class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold shadow-sm">Save Changes</button>
           </div>
         </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 4B: HOLD CLIENT / PAUSE BILLING -->
+  <div id="holdClientModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      
+      <!-- Modal Header -->
+      <div class="bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 px-6 py-4 text-white flex justify-between items-center">
+        <div>
+          <h3 class="font-bold text-base flex items-center gap-2">
+            <span>⏸️</span> <span>Hold Client / Pause Monthly Billing</span>
+          </h3>
+          <p class="text-xs text-amber-100">Pause fee calculation when client travels abroad or temporarily suspends services</p>
+        </div>
+        <button onclick="app.closeModal('holdClientModal')" class="text-white/80 hover:text-white text-lg">&times;</button>
+      </div>
+
+      <!-- Form -->
+      <form onsubmit="app.handleSaveHoldClient(event)" class="p-6 space-y-4">
+        
+        <!-- Target Client Name Display -->
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
+          <div>
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Client</span>
+            <div id="hold-modal-client-name" class="font-bold text-slate-900 text-sm">--</div>
+          </div>
+          <div id="hold-modal-current-status" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800">
+            Active
+          </div>
+        </div>
+
+        <!-- Hold Action Mode -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Billing Status *</label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="cursor-pointer border rounded-xl p-3 flex items-start gap-2.5 transition has-[:checked]:border-amber-500 has-[:checked]:bg-amber-50/50 has-[:checked]:ring-1 has-[:checked]:ring-amber-500">
+              <input type="radio" name="hold-action-type" id="hold-action-hold" value="hold" checked onchange="app.onHoldActionTypeChange()" class="mt-0.5 text-amber-600 focus:ring-amber-500">
+              <div>
+                <span class="text-xs font-bold text-slate-900 block">Put on Hold (Paused)</span>
+                <span class="text-[11px] text-slate-500 block leading-tight mt-0.5">Pause monthly recurring fees during hold period</span>
+              </div>
+            </label>
+            <label class="cursor-pointer border rounded-xl p-3 flex items-start gap-2.5 transition has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50/50 has-[:checked]:ring-1 has-[:checked]:ring-emerald-500">
+              <input type="radio" name="hold-action-type" id="hold-action-active" value="active" onchange="app.onHoldActionTypeChange()" class="mt-0.5 text-emerald-600 focus:ring-emerald-500">
+              <div>
+                <span class="text-xs font-bold text-slate-900 block">Active (Normal)</span>
+                <span class="text-[11px] text-slate-500 block leading-tight mt-0.5">Resume normal recurring monthly fee calculation</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Hold Details Container (Shown when 'hold' selected) -->
+        <div id="hold-fields-container" class="space-y-4 pt-1">
+          
+          <!-- Month Range -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Hold From Month *
+              </label>
+              <input type="month" id="hold-from-month-input" required class="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white font-medium">
+              <p class="text-[10px] text-slate-500 mt-1">First billing month to pause fees</p>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Hold Until Month <span class="text-slate-400 font-normal">(Optional)</span>
+              </label>
+              <input type="month" id="hold-to-month-input" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white font-medium">
+              <p class="text-[10px] text-slate-500 mt-1">Leave blank if return date is uncertain</p>
+            </div>
+          </div>
+
+          <!-- Quick presets for Reason -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Reason for Hold *</label>
+            <input type="text" id="hold-reason-input" required placeholder="e.g. Travelled to another country (USA) / Services paused" class="w-full text-sm px-3.5 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white font-medium text-slate-900">
+            <div class="flex flex-wrap gap-1.5 mt-2">
+              <button type="button" onclick="app.setHoldReasonPreset('Travelled to another country / abroad')" class="text-[11px] bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 px-2.5 py-1 rounded-lg border border-slate-200 transition">
+                ✈️ Travelled abroad
+              </button>
+              <button type="button" onclick="app.setHoldReasonPreset('Temporary business hiatus / suspension')" class="text-[11px] bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 px-2.5 py-1 rounded-lg border border-slate-200 transition">
+                🏢 Business hiatus
+              </button>
+              <button type="button" onclick="app.setHoldReasonPreset('Client requested temporary pause')" class="text-[11px] bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 px-2.5 py-1 rounded-lg border border-slate-200 transition">
+                ⏸️ Client requested pause
+              </button>
+              <button type="button" onclick="app.setHoldReasonPreset('Personal / medical leave')" class="text-[11px] bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 px-2.5 py-1 rounded-lg border border-slate-200 transition">
+                🏥 Personal leave
+              </button>
+            </div>
+          </div>
+
+          <!-- Internal Note -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Hold Notes <span class="text-slate-400 font-normal">(Optional)</span></label>
+            <textarea id="hold-notes-input" rows="2" placeholder="e.g. Client will return in October 2026. Only contact via WhatsApp." class="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-slate-800"></textarea>
+          </div>
+
+        </div>
+
+        <!-- Footer Buttons -->
+        <div class="pt-3 border-t border-slate-200 flex justify-between items-center">
+          <button type="button" id="hold-modal-resume-btn" onclick="app.resumeClientQuick()" class="hidden px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5">
+            <span>▶️</span> <span>Resume Client Now</span>
+          </button>
+          <div class="flex gap-2 ml-auto">
+            <button type="button" onclick="app.closeModal('holdClientModal')" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl font-medium">Cancel</button>
+            <button type="submit" id="hold-modal-submit-btn" class="px-5 py-2 text-sm bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-semibold shadow-sm transition">
+              Save Hold Details
+            </button>
+          </div>
+        </div>
+
       </form>
     </div>
   </div>
@@ -1726,6 +1893,6 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="app.js?v=3.6"></script>
+  <script src="app.js?v=3.7"></script>
 </body>
 </html>
