@@ -1982,6 +1982,7 @@ WHERE id = 'main_store';`;
       showView('clients');
       return;
     }
+    state.activeClientId = clientId;
 
     const upToMonthInput = document.getElementById('ledger-up-to-month');
     const lastCompleted = getLastMonth();
@@ -2822,7 +2823,7 @@ WHERE id = 'main_store';`;
   }
 
   // ==================== HOLD CLIENT / PAUSE BILLING ====================
-  function openHoldClientModal(clientId = null) {
+  function openHoldClientModal(clientId = null, defaultMode = null) {
     const cId = clientId || state.activeClientId;
     const client = state.clients.find(c => String(c.id) === String(cId));
     if (!client) {
@@ -2958,10 +2959,11 @@ WHERE id = 'main_store';`;
     const isReturnMonth = document.getElementById('resume-mode-month')?.checked;
     const box = document.getElementById('resume-month-input-box');
     const returnInput = document.getElementById('resume-return-month-input');
+    const isHold = document.getElementById('hold-action-hold')?.checked;
     if (box) {
       if (isReturnMonth) {
         box.classList.remove('hidden');
-        if (returnInput) returnInput.required = true;
+        if (returnInput) returnInput.required = !isHold;
       } else {
         box.classList.add('hidden');
         if (returnInput) returnInput.required = false;
@@ -3094,14 +3096,23 @@ WHERE id = 'main_store';`;
     client.holdNotes = notes;
 
     if (!Array.isArray(client.holds)) client.holds = [];
-    client.holds.push({
-      id: 'hold_' + Date.now(),
-      fromMonth,
-      toMonth: toMonth || null,
-      reason,
-      notes,
-      createdAt: new Date().toISOString(),
-    });
+    const existingHold = client.holds.find(h => !h.toMonth || h.fromMonth === fromMonth);
+    if (existingHold) {
+      existingHold.fromMonth = fromMonth;
+      existingHold.toMonth = toMonth || null;
+      existingHold.reason = reason;
+      existingHold.notes = notes;
+      existingHold.updatedAt = new Date().toISOString();
+    } else {
+      client.holds.push({
+        id: 'hold_' + Date.now(),
+        fromMonth,
+        toMonth: toMonth || null,
+        reason,
+        notes,
+        createdAt: new Date().toISOString(),
+      });
+    }
 
     saveData();
     closeModal('holdClientModal');
