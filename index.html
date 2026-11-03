@@ -1669,17 +1669,63 @@
 
         </div>
 
-        <!-- Footer Buttons -->
-        <div class="pt-3 border-t border-slate-200 flex justify-between items-center">
-          <button type="button" id="hold-modal-resume-btn" onclick="app.resumeClientQuick()" class="hidden px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5">
-            <span>▶️</span> <span>Resume Client Now</span>
-          </button>
-          <div class="flex gap-2 ml-auto">
-            <button type="button" onclick="app.closeModal('holdClientModal')" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl font-medium">Cancel</button>
-            <button type="submit" id="hold-modal-submit-btn" class="px-5 py-2 text-sm bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-semibold shadow-sm transition">
-              Save Hold Details
-            </button>
+        <!-- Resume Details Container (Shown when 'active' selected) -->
+        <div id="resume-fields-container" class="space-y-4 pt-1 hidden">
+          <div class="bg-emerald-50/90 border border-emerald-200 rounded-xl p-3.5 flex items-start gap-3">
+            <span class="text-xl leading-none">▶️</span>
+            <div>
+              <h4 class="font-bold text-emerald-950 text-xs uppercase tracking-wider">Resume Client Monthly Billing</h4>
+              <p class="text-xs text-emerald-800 mt-0.5">
+                Choose how you want to resume billing: restart from a specific return month, or resume from the hold month (cancel hold).
+              </p>
+            </div>
           </div>
+
+          <div class="space-y-3">
+            <!-- Option 1: Resume from Return Month -->
+            <label class="cursor-pointer border border-slate-200 rounded-xl p-3.5 flex items-start gap-3 transition hover:border-emerald-300 has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50/40 has-[:checked]:ring-1 has-[:checked]:ring-emerald-500 block">
+              <input type="radio" name="resume-mode" id="resume-mode-month" value="return_month" checked onchange="app.onResumeModeChange()" class="mt-1 text-emerald-600 focus:ring-emerald-500">
+              <div class="flex-1">
+                <span class="text-xs font-bold text-slate-900 block">Resume billing from a return month</span>
+                <span class="text-[11px] text-slate-500 block mt-0.5">
+                  Hold stays applied for past months (₹0 fee). Normal recurring fee restarts in the selected return month.
+                </span>
+
+                <div id="resume-month-input-box" class="mt-2.5 pt-2 border-t border-slate-100">
+                  <label class="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                    Return / Resume Billing Month *
+                  </label>
+                  <input type="month" id="resume-return-month-input" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white font-medium text-slate-900">
+                  <p id="resume-month-summary-hint" class="text-[10px] text-slate-500 mt-1">
+                    Hold will end the month before this return month. Billing restarts in this month.
+                  </p>
+                </div>
+              </div>
+            </label>
+
+            <!-- Option 2: Resume from hold start month (Cancel Hold) -->
+            <label class="cursor-pointer border border-slate-200 rounded-xl p-3.5 flex items-start gap-3 transition hover:border-emerald-300 has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50/40 has-[:checked]:ring-1 has-[:checked]:ring-emerald-500 block">
+              <input type="radio" name="resume-mode" id="resume-mode-from-hold" value="from_hold_month" onchange="app.onResumeModeChange()" class="mt-1 text-emerald-600 focus:ring-emerald-500">
+              <div class="flex-1">
+                <span class="text-xs font-bold text-slate-900 block" id="resume-from-hold-title">
+                  Resume from hold month (Cancel Hold)
+                </span>
+                <span class="text-[11px] text-slate-500 block mt-0.5" id="resume-from-hold-desc">
+                  Cancels the hold completely. Regular recurring fees will be charged for all months including the hold start month.
+                </span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Footer Buttons -->
+        <div class="pt-3 border-t border-slate-200 flex justify-end items-center gap-2">
+          <button type="button" onclick="app.closeModal('holdClientModal')" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl font-medium transition">
+            Cancel
+          </button>
+          <button type="submit" id="hold-modal-submit-btn" class="px-5 py-2 text-sm bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-semibold shadow-sm transition flex items-center gap-1.5">
+            <span>⏸️</span> <span>Save Hold Details</span>
+          </button>
         </div>
 
       </form>
@@ -1926,6 +1972,6 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="app.js?v=3.8"></script>
+  <script src="app.js?v=3.9"></script>
 </body>
 </html>

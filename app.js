@@ -130,6 +130,32 @@
     return a.localeCompare(b);
   }
 
+  function getPreviousMonth(monthStr) {
+    if (!monthStr) return '';
+    const parts = monthStr.split('-');
+    let year = parseInt(parts[0], 10);
+    let month = parseInt(parts[1], 10);
+    month -= 1;
+    if (month < 1) {
+      month = 12;
+      year -= 1;
+    }
+    return `${year}-${String(month).padStart(2, '0')}`;
+  }
+
+  function getNextMonth(monthStr) {
+    if (!monthStr) return '';
+    const parts = monthStr.split('-');
+    let year = parseInt(parts[0], 10);
+    let month = parseInt(parts[1], 10);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+    return `${year}-${String(month).padStart(2, '0')}`;
+  }
+
   // ==================== CLIENT ON HOLD ENGINE ====================
   function isClientOnHoldInMonth(client, monthStr) {
     if (!client || !monthStr) return null;
@@ -140,6 +166,10 @@
         if (!h.fromMonth) continue;
         const afterFrom = compareMonths(monthStr, h.fromMonth) >= 0;
         const beforeTo = !h.toMonth || compareMonths(monthStr, h.toMonth) <= 0;
+
+        // If client is currently active, an open-ended hold entry (without toMonth) does not apply
+        if (client.status === 'active' && !h.toMonth) continue;
+
         if (afterFrom && beforeTo) {
           return h;
         }
@@ -147,11 +177,17 @@
     }
 
     // Check top-level client fields
-    if (client.status === 'hold' || client.holdFrom) {
+    if (client.status === 'hold' || (client.holdFrom && client.holdTo)) {
       const fromM = client.holdFrom || client.startMonth;
       const toM = client.holdTo;
-      const afterFrom = !fromM || compareMonths(monthStr, fromM) >= 0;
+      if (!fromM) return null;
+
+      const afterFrom = compareMonths(monthStr, fromM) >= 0;
       const beforeTo = !toM || compareMonths(monthStr, toM) <= 0;
+
+      // If client is active and there's no toM, do not hold
+      if (client.status === 'active' && !toM) return null;
+
       if (afterFrom && beforeTo) {
         return {
           fromMonth: fromM,
@@ -167,6 +203,9 @@
 
   function isClientCurrentlyOnHold(client) {
     if (!client) return false;
+    if (client.status === 'inactive') return false;
+    if (client.status === 'active') return false; // Explicitly active
+
     const currentMonth = getTodayDate().slice(0, 7);
 
     if (client.status === 'hold') {
@@ -2800,8 +2839,12 @@ WHERE id = 'main_store';`;
     const toInput = document.getElementById('hold-to-month-input');
     const reasonInput = document.getElementById('hold-reason-input');
     const notesInput = document.getElementById('hold-notes-input');
-    const resumeBtn = document.getElementById('hold-modal-resume-btn');
     const submitBtn = document.getElementById('hold-modal-submit-btn');
+
+    const resumeMonthInput = document.getElementById('resume-return-month-input');
+    const resumeModeMonth = document.getElementById('resume-mode-month');
+    const resumeFromHoldTitle = document.getElementById('resume-from-hold-title');
+    const resumeFromHoldDesc = document.getElementById('resume-from-hold-desc');
 
     if (nameEl) nameEl.textContent = client.businessName ? `${client.businessName} (${client.name})` : client.name;
 
@@ -2817,12 +2860,20 @@ WHERE id = 'main_store';`;
       }
     }
 
-    if (radioHold && radioActive) {
-      radioHold.checked = true; // default to hold mode
+    if (defaultMode === 'resume') {
+      if (radioActive) radioActive.checked = true;
+      if (radioHold) radioHold.checked = false;
+    } else {
+      if (radioHold && radioActive) {
+        radioHold.checked = true;
+        radioActive.checked = false;
+      }
     }
 
+    const currentYearMonth = getTodayDate().slice(0, 7);
+
     if (fromInput) {
-      fromInput.value = client.holdFrom || getCurrentYearMonth();
+      fromInput.value = client.holdFrom || currentYearMonth;
     }
     if (toInput) {
       toInput.value = client.holdTo || '';
@@ -2834,33 +2885,86 @@ WHERE id = 'main_store';`;
       notesInput.value = client.holdNotes || '';
     }
 
-    if (resumeBtn) {
-      if (isHold) {
-        resumeBtn.classList.remove('hidden');
+    // Configure resume options
+    const holdStartMonth = client.holdFrom || (Array.isArray(client.holds) && client.holds.length > 0 ? client.holds[client.holds.length - 1].fromMonth : '') || currentYearMonth;
+    const holdStartFormatted = holdStartMonth ? formatMonthName(holdStartMonth) : 'Hold Start Month';
+
+    if (resumeFromHoldTitle) {
+      resumeFromHoldTitle.textContent = `Resume from hold month (${holdStartFormatted}) — Cancel Hold`;
+    }
+    if (resumeFromHoldDesc) {
+      resumeFromHoldDesc.textContent = `Cancels the hold completely. Regular recurring fees will be charged for all months including ${holdStartFormatted}.`;
+    }
+
+    if (resumeModeMonth) {
+      resumeModeMonth.checked = true;
+    }
+
+    if (resumeMonthInput) {
+      if (client.holdTo) {
+        resumeMonthInput.value = getNextMonth(client.holdTo);
       } else {
-        resumeBtn.classList.add('hidden');
+        if (holdStartMonth && compareMonths(currentYearMonth, holdStartMonth) <= 0) {
+          resumeMonthInput.value = getNextMonth(holdStartMonth);
+        } else {
+          resumeMonthInput.value = currentYearMonth;
+        }
       }
     }
 
-    if (submitBtn) {
-      submitBtn.textContent = isHold ? 'Update Hold Settings' : 'Put Client on Hold';
-    }
-
+    onResumeModeChange();
     onHoldActionTypeChange();
     openModal('holdClientModal');
   }
 
   function onHoldActionTypeChange() {
     const isHold = document.getElementById('hold-action-hold')?.checked;
-    const container = document.getElementById('hold-fields-container');
+    const holdContainer = document.getElementById('hold-fields-container');
+    const resumeContainer = document.getElementById('resume-fields-container');
     const submitBtn = document.getElementById('hold-modal-submit-btn');
-    if (container) {
-      if (isHold) {
-        container.classList.remove('hidden');
-        if (submitBtn) submitBtn.textContent = 'Save Hold Details';
+
+    const fromInput = document.getElementById('hold-from-month-input');
+    const reasonInput = document.getElementById('hold-reason-input');
+    const returnMonthInput = document.getElementById('resume-return-month-input');
+
+    if (isHold) {
+      if (holdContainer) holdContainer.classList.remove('hidden');
+      if (resumeContainer) resumeContainer.classList.add('hidden');
+      if (fromInput) fromInput.required = true;
+      if (reasonInput) reasonInput.required = true;
+      if (returnMonthInput) returnMonthInput.required = false;
+
+      if (submitBtn) {
+        submitBtn.innerHTML = '<span>⏸️</span> <span>Save Hold Details</span>';
+        submitBtn.className = 'px-5 py-2 text-sm bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-semibold shadow-sm transition flex items-center gap-1.5';
+      }
+    } else {
+      if (holdContainer) holdContainer.classList.add('hidden');
+      if (resumeContainer) resumeContainer.classList.remove('hidden');
+      if (fromInput) fromInput.required = false;
+      if (reasonInput) reasonInput.required = false;
+
+      const isReturnMonth = document.getElementById('resume-mode-month')?.checked;
+      if (returnMonthInput) returnMonthInput.required = !!isReturnMonth;
+
+      if (submitBtn) {
+        submitBtn.innerHTML = '<span>✓</span> <span>Confirm & Resume Client</span>';
+        submitBtn.className = 'px-5 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold shadow-sm transition flex items-center gap-1.5';
+      }
+    }
+  }
+
+  function onResumeModeChange() {
+    const isReturnMonth = document.getElementById('resume-mode-month')?.checked;
+    const box = document.getElementById('resume-month-input-box');
+    const returnInput = document.getElementById('resume-return-month-input');
+    if (box) {
+      if (isReturnMonth) {
+        box.classList.remove('hidden');
+        if (returnInput) returnInput.required = true;
       } else {
-        container.classList.add('hidden');
-        if (submitBtn) submitBtn.textContent = 'Set Client as Active';
+        box.classList.add('hidden');
+        if (returnInput) returnInput.required = false;
       }
     }
   }
@@ -2881,20 +2985,93 @@ WHERE id = 'main_store';`;
     const actionType = document.querySelector('input[name="hold-action-type"]:checked')?.value || 'hold';
 
     if (actionType === 'active') {
-      // Resume client to active status
-      client.status = 'active';
-      if (client.holdFrom && !client.holdTo) {
-        client.holdTo = getLastMonth();
+      // User is resuming the client
+      const resumeMode = document.querySelector('input[name="resume-mode"]:checked')?.value || 'return_month';
+      const holdStartMonth = client.holdFrom || (Array.isArray(client.holds) && client.holds.length > 0 ? client.holds[client.holds.length - 1].fromMonth : null);
+
+      if (resumeMode === 'from_hold_month' || !holdStartMonth) {
+        // Choice 2: Resume from hold start month (Cancel Hold completely)
+        client.status = 'active';
+        const oldHoldFrom = client.holdFrom;
+        client.holdFrom = null;
+        client.holdTo = null;
+        client.holdReason = null;
+        client.holdNotes = null;
+
+        if (Array.isArray(client.holds)) {
+          if (oldHoldFrom) {
+            client.holds = client.holds.filter(h => h.fromMonth !== oldHoldFrom);
+          } else {
+            client.holds = [];
+          }
+        }
+
+        saveData();
+        closeModal('holdClientModal');
+        const startLabel = oldHoldFrom ? formatMonthName(oldHoldFrom) : 'the hold month';
+        showToast(`Client "${client.name}" resumed from ${startLabel}! Hold canceled and normal billing restored.`);
+        renderClientDetail(client.id);
+        renderClientsList();
+        renderDashboard();
+        return;
       }
+
+      // Choice 1: Resume from specific return month
+      const returnMonth = document.getElementById('resume-return-month-input')?.value;
+      if (!returnMonth) {
+        showToast('Please select a Return Month to resume billing', true);
+        return;
+      }
+
+      // If return month is earlier than or equal to hold start month, treat as canceling hold
+      if (compareMonths(returnMonth, holdStartMonth) <= 0) {
+        client.status = 'active';
+        client.holdFrom = null;
+        client.holdTo = null;
+        client.holdReason = null;
+        client.holdNotes = null;
+        if (Array.isArray(client.holds)) {
+          client.holds = client.holds.filter(h => h.fromMonth !== holdStartMonth);
+        }
+        saveData();
+        closeModal('holdClientModal');
+        showToast(`Client "${client.name}" resumed from ${formatMonthName(returnMonth)}. Hold canceled.`);
+        renderClientDetail(client.id);
+        renderClientsList();
+        renderDashboard();
+        return;
+      }
+
+      // Hold ends the month before return month
+      const lastHoldMonth = getPreviousMonth(returnMonth);
+      client.status = 'active';
+      client.holdTo = lastHoldMonth;
+
+      if (!Array.isArray(client.holds)) client.holds = [];
+      const openHold = client.holds.find(h => h.fromMonth === holdStartMonth || !h.toMonth);
+      if (openHold) {
+        openHold.toMonth = lastHoldMonth;
+      } else {
+        client.holds.push({
+          id: 'hold_' + Date.now(),
+          fromMonth: holdStartMonth,
+          toMonth: lastHoldMonth,
+          reason: client.holdReason || 'Client on hold',
+          notes: client.holdNotes || '',
+          createdAt: new Date().toISOString()
+        });
+      }
+
       saveData();
       closeModal('holdClientModal');
-      showToast(`Client "${client.name}" is now Active. Normal billing resumed.`);
+      showToast(`Client "${client.name}" resumed! Normal billing begins in ${formatMonthName(returnMonth)}. (Held until ${formatMonthName(lastHoldMonth)})`);
       renderClientDetail(client.id);
       renderClientsList();
       renderDashboard();
       return;
     }
 
+    // Placing on hold
     const fromMonth = document.getElementById('hold-from-month-input')?.value;
     const toMonth = document.getElementById('hold-to-month-input')?.value || '';
     const reason = document.getElementById('hold-reason-input')?.value.trim() || 'Client on hold';
@@ -2937,19 +3114,7 @@ WHERE id = 'main_store';`;
 
   function resumeClientQuick(clientId = null) {
     const cId = clientId || state.activeClientId;
-    const client = state.clients.find(c => String(c.id) === String(cId));
-    if (!client) return;
-
-    client.status = 'active';
-    if (client.holdFrom && !client.holdTo) {
-      client.holdTo = getLastMonth();
-    }
-    saveData();
-    closeModal('holdClientModal');
-    showToast(`Client "${client.name}" resumed! Normal monthly billing is active.`);
-    renderClientDetail(client.id);
-    renderClientsList();
-    renderDashboard();
+    openHoldClientModal(cId, 'resume');
   }
 
   // Business Profile Settings
@@ -4733,11 +4898,14 @@ WHERE id = 'main_store';`;
     handleDeleteClient,
     openHoldClientModal,
     onHoldActionTypeChange,
+    onResumeModeChange,
     setHoldReasonPreset,
     handleSaveHoldClient,
     resumeClientQuick,
     isClientCurrentlyOnHold,
     isClientOnHoldInMonth,
+    getPreviousMonth,
+    getNextMonth,
     openEditBusinessProfileModal,
     handleSaveBusinessProfile,
     openCloudDatabaseModal,
