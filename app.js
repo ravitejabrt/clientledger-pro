@@ -48,6 +48,7 @@
       from: '',
       to: '',
     },
+    batchWhatsApp: null,
   };
 
   const STORAGE_KEY = 'clientledger_pro_data_v1';
@@ -4487,28 +4488,7 @@ WHERE id = 'main_store';`;
     openModal('pendingInvoiceModal');
   }
 
-  function sendPendingInvoiceWhatsApp(explicitMonth = null) {
-    const cId = state.activeClientId || (activePendingInvoiceContext ? activePendingInvoiceContext.clientId : null);
-    const client = (state.clients || []).find(c => String(c.id) === String(cId));
-    if (!client) {
-      showToast('Client not found', true);
-      return;
-    }
-
-    const targetMonth = explicitMonth || (activePendingInvoiceContext && activePendingInvoiceContext.explicitMonth ? activePendingInvoiceContext.explicitMonth : null);
-    const ledger = calculateClientLedger(client) || { monthlyBreakdown: [], totalBilled: 0, totalPaid: 0, finalBalance: 0 };
-    let unpaidRows = (ledger.monthlyBreakdown || []).filter(r => r.balance > 0);
-
-    if (targetMonth) {
-      unpaidRows = unpaidRows.filter(r => r.month === targetMonth);
-    }
-
-    if (unpaidRows.length === 0) {
-      showToast(targetMonth ? 'This month has no pending balance!' : '🎉 All billing months are fully paid! No pending dues.', false);
-      return;
-    }
-
-    const totalDue = unpaidRows.reduce((sum, r) => sum + (Number(r.balance) || 0), 0);
+  function buildPendingInvoiceWhatsAppMessage(client, unpaidRows, totalDue, ledger, targetMonth = null) {
     const businessTitle = state.settings.businessName || 'Digital CA Services';
 
     let msg = `🔔 *PENDING DUES INVOICE / PAYMENT REMINDER*\n`;
@@ -4540,7 +4520,7 @@ WHERE id = 'main_store';`;
 
     msg += `━━━━━━━━━━━━━━━━━━━━\n`;
     msg += `*TOTAL PENDING DUE: ${formatCurrency(totalDue)}*\n`;
-    if (ledger.finalBalance !== totalDue) {
+    if (ledger && ledger.finalBalance !== undefined && ledger.finalBalance !== totalDue) {
       msg += `*Overall Ledger Balance: ${formatCurrency(ledger.finalBalance)}*\n`;
     }
     msg += `━━━━━━━━━━━━━━━━━━━━\n`;
@@ -4548,6 +4528,33 @@ WHERE id = 'main_store';`;
     msg += `If you have already transferred the payment, please share the transaction reference / screenshot.\n\n`;
     msg += `_Thank you!_\n`;
     msg += `_${businessTitle}_`;
+
+    return msg;
+  }
+
+  function sendPendingInvoiceWhatsApp(explicitMonth = null) {
+    const cId = state.activeClientId || (activePendingInvoiceContext ? activePendingInvoiceContext.clientId : null);
+    const client = (state.clients || []).find(c => String(c.id) === String(cId));
+    if (!client) {
+      showToast('Client not found', true);
+      return;
+    }
+
+    const targetMonth = explicitMonth || (activePendingInvoiceContext && activePendingInvoiceContext.explicitMonth ? activePendingInvoiceContext.explicitMonth : null);
+    const ledger = calculateClientLedger(client) || { monthlyBreakdown: [], totalBilled: 0, totalPaid: 0, finalBalance: 0 };
+    let unpaidRows = (ledger.monthlyBreakdown || []).filter(r => r.balance > 0);
+
+    if (targetMonth) {
+      unpaidRows = unpaidRows.filter(r => r.month === targetMonth);
+    }
+
+    if (unpaidRows.length === 0) {
+      showToast(targetMonth ? 'This month has no pending balance!' : '🎉 All billing months are fully paid! No pending dues.', false);
+      return;
+    }
+
+    const totalDue = unpaidRows.reduce((sum, r) => sum + (Number(r.balance) || 0), 0);
+    const msg = buildPendingInvoiceWhatsAppMessage(client, unpaidRows, totalDue, ledger, targetMonth);
 
     let phoneDigits = normalizeWhatsAppPhone(client.phone);
     if (!phoneDigits) {
@@ -4577,6 +4584,449 @@ WHERE id = 'main_store';`;
     setTimeout(() => a.remove(), 100);
 
     showToast(phoneDigits ? `Opening WhatsApp for ${client.name || 'client'}...` : 'Opening WhatsApp with pending dues invoice...');
+  }
+
+  // ==================== BATCH SEND PENDING WHATSAPP INVOICES ====================
+
+  function openBatchPendingWhatsAppModal() {
+    stopBatchWhatsAppQueue();
+    const pendingClients = [];
+
+    (state.clients || []).forEach(c => {
+      const ledger = calculateClientLedger(c);
+      if (ledger && ledger.finalBalance > 0) {
+        const unpaidRows = (ledger.monthlyBreakdown || []).filter(r => r.balance > 0);
+        pendingClients.push({
+          client: c,
+          ledger,
+          unpaidRows,
+          status: 'ready',
+        });
+      }
+    });
+
+    pendingClients.sort((a, b) => b.ledger.finalBalance - a.ledger.finalBalance);
+
+    state.batchWhatsApp = {
+      items: pendingClients,
+      selectedClientIds: new Set(pendingClients.map(item => String(item.client.id))),
+      queue: [],
+      currentIndex: 0,
+      isRunning: false,
+      timer: null,
+      filterQuery: '',
+    };
+
+    const searchInput = document.getElementById('batch-wa-search-input');
+    if (searchInput) searchInput.value = '';
+
+    const progressBanner = document.getElementById('batch-wa-progress-banner');
+    if (progressBanner) progressBanner.classList.add('hidden');
+
+    const previewBox = document.getElementById('batch-wa-sample-preview');
+    if (previewBox) {
+      previewBox.classList.add('hidden');
+      if (pendingClients.length > 0) {
+        const sample = pendingClients[0];
+        previewBox.textContent = buildPendingInvoiceWhatsAppMessage(sample.client, sample.unpaidRows, sample.ledger.finalBalance, sample.ledger);
+      } else {
+        previewBox.textContent = 'No pending clients to preview.';
+      }
+    }
+
+    renderBatchWhatsAppTable();
+    openModal('batchPendingWhatsAppModal');
+  }
+
+  function renderBatchWhatsAppTable(filterQuery = '') {
+    const tbody = document.getElementById('batch-wa-table-tbody');
+    const emptyState = document.getElementById('batch-wa-empty-state');
+    const headerCount = document.getElementById('batch-wa-header-count');
+    const selectedStat = document.getElementById('batch-wa-selected-stat');
+    const totalStat = document.getElementById('batch-wa-total-stat');
+    const startBtnText = document.getElementById('btn-start-batch-whatsapp-text');
+    const selectAllCb = document.getElementById('batch-wa-select-all-cb');
+
+    if (!tbody || !state.batchWhatsApp) return;
+
+    const allItems = state.batchWhatsApp.items || [];
+    const query = (filterQuery || '').toLowerCase().trim();
+
+    const filteredItems = query
+      ? allItems.filter(item => {
+          const c = item.client;
+          const searchHaystack = `${c.name || ''} ${c.businessName || ''} ${c.phone || ''} ${c.email || ''}`.toLowerCase();
+          return searchHaystack.includes(query);
+        })
+      : allItems;
+
+    if (headerCount) {
+      headerCount.textContent = `${allItems.length} Client${allItems.length === 1 ? '' : 's'}`;
+    }
+
+    if (filteredItems.length === 0) {
+      tbody.innerHTML = '';
+      if (emptyState) emptyState.classList.remove('hidden');
+    } else {
+      if (emptyState) emptyState.classList.add('hidden');
+
+      tbody.innerHTML = filteredItems
+        .map(item => {
+          const c = item.client;
+          const l = item.ledger;
+          const isSelected = state.batchWhatsApp.selectedClientIds.has(String(c.id));
+          const phoneDigits = normalizeWhatsAppPhone(c.phone);
+          const hasPhone = !!phoneDigits;
+
+          const unpaidMonthsNames = (item.unpaidRows || []).map(r => r.fullMonthName).slice(0, 3).join(', ');
+          const extraCount = (item.unpaidRows || []).length > 3 ? ` +${(item.unpaidRows || []).length - 3} more` : '';
+          const monthsText = `${item.unpaidRows.length} mo: ${unpaidMonthsNames}${extraCount}`;
+
+          let statusBadge = `<span id="batch-wa-status-${c.id}" class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">Ready</span>`;
+          if (item.status === 'sent') {
+            statusBadge = `<span id="batch-wa-status-${c.id}" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">Sent ✓</span>`;
+          } else if (item.status === 'sending') {
+            statusBadge = `<span id="batch-wa-status-${c.id}" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">Sending...</span>`;
+          } else if (!hasPhone) {
+            statusBadge = `<span id="batch-wa-status-${c.id}" class="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">No Phone ⚠️</span>`;
+          }
+
+          const phoneDisplay = hasPhone
+            ? `<div class="flex items-center gap-1.5 font-medium text-slate-700">
+                 <span class="text-emerald-600 font-bold">📱</span>
+                 <span>${escapeHtml(c.phone)}</span>
+               </div>`
+            : `<div class="flex items-center gap-1">
+                 <input type="tel" id="inline-phone-${c.id}" placeholder="10-digit number" class="w-28 px-1.5 py-0.5 text-[11px] border border-amber-300 rounded focus:ring-1 focus:ring-emerald-500 bg-amber-50/50">
+                 <button type="button" onclick="app.updateClientPhoneInline('${c.id}')" class="text-[10px] bg-slate-800 hover:bg-black text-white px-1.5 py-0.5 rounded font-bold">Save</button>
+               </div>`;
+
+          return `
+            <tr id="batch-wa-row-${c.id}" class="hover:bg-slate-50 transition ${item.status === 'sent' ? 'bg-emerald-50/30' : ''}">
+              <td class="py-2.5 px-3 text-center">
+                <input type="checkbox" data-client-id="${c.id}" ${isSelected ? 'checked' : ''} onchange="app.onBatchWaClientToggle('${c.id}', this.checked)" class="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer align-middle">
+              </td>
+              <td class="py-2.5 px-3">
+                <div class="font-bold text-slate-900">${escapeHtml(c.businessName || c.name)}</div>
+                ${c.businessName ? `<div class="text-[11px] text-slate-500">👤 ${escapeHtml(c.name)}</div>` : ''}
+              </td>
+              <td class="py-2.5 px-3">
+                ${phoneDisplay}
+              </td>
+              <td class="py-2.5 px-3">
+                <span class="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md inline-block">
+                  ${escapeHtml(monthsText)}
+                </span>
+              </td>
+              <td class="py-2.5 px-3 text-right font-black text-red-600 text-sm">
+                ${formatCurrency(l.finalBalance)}
+              </td>
+              <td class="py-2.5 px-3 text-center">
+                ${statusBadge}
+              </td>
+              <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                <button type="button" onclick="app.sendSingleBatchWhatsApp('${c.id}')" class="px-2.5 py-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition shadow-2xs flex items-center gap-1 ml-auto" title="Send WhatsApp pending dues invoice now">
+                  <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                  <span>Send</span>
+                </button>
+              </td>
+            </tr>
+          `;
+        })
+        .join('');
+    }
+
+    const selectedItems = allItems.filter(item => state.batchWhatsApp.selectedClientIds.has(String(item.client.id)));
+    const totalSelectedDue = selectedItems.reduce((sum, item) => sum + (Number(item.ledger.finalBalance) || 0), 0);
+
+    if (selectedStat) selectedStat.textContent = String(selectedItems.length);
+    if (totalStat) totalStat.textContent = formatCurrency(totalSelectedDue);
+    if (startBtnText) startBtnText.textContent = `Send WhatsApp Invoices (${selectedItems.length})`;
+
+    if (selectAllCb) {
+      selectAllCb.checked = allItems.length > 0 && selectedItems.length === allItems.length;
+      selectAllCb.indeterminate = selectedItems.length > 0 && selectedItems.length < allItems.length;
+    }
+  }
+
+  function toggleSelectAllBatchWhatsApp(isChecked) {
+    if (!state.batchWhatsApp) return;
+    const allItems = state.batchWhatsApp.items || [];
+    if (isChecked) {
+      state.batchWhatsApp.selectedClientIds = new Set(allItems.map(item => String(item.client.id)));
+    } else {
+      state.batchWhatsApp.selectedClientIds.clear();
+    }
+    renderBatchWhatsAppTable(state.batchWhatsApp.filterQuery);
+  }
+
+  function onBatchWaClientToggle(clientId, isChecked) {
+    if (!state.batchWhatsApp) return;
+    if (isChecked) {
+      state.batchWhatsApp.selectedClientIds.add(String(clientId));
+    } else {
+      state.batchWhatsApp.selectedClientIds.delete(String(clientId));
+    }
+    renderBatchWhatsAppTable(state.batchWhatsApp.filterQuery);
+  }
+
+  function filterBatchWhatsAppList() {
+    if (!state.batchWhatsApp) return;
+    const query = document.getElementById('batch-wa-search-input')?.value || '';
+    state.batchWhatsApp.filterQuery = query;
+    renderBatchWhatsAppTable(query);
+  }
+
+  function updateClientPhoneInline(clientId) {
+    const input = document.getElementById(`inline-phone-${clientId}`);
+    if (!input) return;
+    const val = input.value.trim();
+    if (!val) {
+      showToast('Please enter a phone number', true);
+      return;
+    }
+    const client = (state.clients || []).find(c => String(c.id) === String(clientId));
+    if (client) {
+      client.phone = val;
+      saveData();
+      showToast(`Phone number updated for ${client.name}`);
+      renderBatchWhatsAppTable(state.batchWhatsApp.filterQuery);
+    }
+  }
+
+  function sendSingleBatchWhatsApp(clientId) {
+    if (!state.batchWhatsApp) return;
+    const item = (state.batchWhatsApp.items || []).find(it => String(it.client.id) === String(clientId));
+    if (!item) return;
+
+    const c = item.client;
+    let phoneDigits = normalizeWhatsAppPhone(c.phone);
+
+    if (!phoneDigits) {
+      const entered = prompt(`Please enter WhatsApp number (10 digits) for ${c.name || 'this client'}:`, '');
+      if (entered === null) return;
+      phoneDigits = normalizeWhatsAppPhone(entered);
+      if (phoneDigits) {
+        c.phone = entered.trim();
+        saveData();
+      }
+    }
+
+    const msg = buildPendingInvoiceWhatsAppMessage(c, item.unpaidRows, item.ledger.finalBalance, item.ledger);
+    const encodedText = encodeURIComponent(msg);
+    const waUrl = phoneDigits
+      ? `https://api.whatsapp.com/send?phone=${phoneDigits}&text=${encodedText}`
+      : `https://api.whatsapp.com/send?text=${encodedText}`;
+
+    const a = document.createElement('a');
+    a.href = waUrl;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => a.remove(), 150);
+
+    item.status = 'sent';
+    const statusCell = document.getElementById(`batch-wa-status-${c.id}`);
+    if (statusCell) {
+      statusCell.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300';
+      statusCell.textContent = 'Sent ✓';
+    }
+    const row = document.getElementById(`batch-wa-row-${c.id}`);
+    if (row) row.classList.add('bg-emerald-50/40');
+
+    showToast(`WhatsApp invoice opened for ${c.businessName || c.name}!`);
+  }
+
+  function startBatchWhatsAppQueue() {
+    if (!state.batchWhatsApp) return;
+    stopBatchWhatsAppQueue();
+
+    const selectedItems = (state.batchWhatsApp.items || []).filter(item =>
+      state.batchWhatsApp.selectedClientIds.has(String(item.client.id))
+    );
+
+    if (selectedItems.length === 0) {
+      showToast('Please select at least 1 client to send WhatsApp invoices.', true);
+      return;
+    }
+
+    state.batchWhatsApp.queue = selectedItems;
+    state.batchWhatsApp.currentIndex = 0;
+    state.batchWhatsApp.isRunning = true;
+
+    const banner = document.getElementById('batch-wa-progress-banner');
+    if (banner) banner.classList.remove('hidden');
+
+    processNextInBatchQueue();
+  }
+
+  function processNextInBatchQueue() {
+    if (!state.batchWhatsApp || !state.batchWhatsApp.isRunning) return;
+
+    const { queue, currentIndex } = state.batchWhatsApp;
+
+    if (currentIndex >= queue.length) {
+      state.batchWhatsApp.isRunning = false;
+      const progressText = document.getElementById('batch-wa-progress-text');
+      const progressBar = document.getElementById('batch-wa-progress-bar');
+      const nextBox = document.getElementById('batch-wa-next-action-box');
+
+      if (progressText) progressText.innerHTML = `🎉 <span class="text-emerald-950 font-bold">Done! All ${queue.length} WhatsApp invoices opened!</span>`;
+      if (progressBar) progressBar.style.width = '100%';
+      if (nextBox) nextBox.innerHTML = `<span class="text-xs font-bold text-emerald-800">All selected client reminders have been launched to WhatsApp.</span>`;
+
+      showToast(`🎉 All ${queue.length} WhatsApp invoices opened!`);
+      return;
+    }
+
+    const currentItem = queue[currentIndex];
+    const c = currentItem.client;
+
+    const percent = Math.round(((currentIndex + 1) / queue.length) * 100);
+    const progressBar = document.getElementById('batch-wa-progress-bar');
+    const progressText = document.getElementById('batch-wa-progress-text');
+    const currentItemHint = document.getElementById('batch-wa-current-item-hint');
+    const manualBtn = document.getElementById('batch-wa-manual-next-btn');
+
+    if (progressBar) progressBar.style.width = `${percent}%`;
+    if (progressText) {
+      progressText.textContent = `Dispatched ${currentIndex + 1} of ${queue.length}: ${c.businessName || c.name}`;
+    }
+
+    let phoneDigits = normalizeWhatsAppPhone(c.phone);
+    const msg = buildPendingInvoiceWhatsAppMessage(c, currentItem.unpaidRows, currentItem.ledger.finalBalance, currentItem.ledger);
+    const encodedText = encodeURIComponent(msg);
+    const waUrl = phoneDigits
+      ? `https://api.whatsapp.com/send?phone=${phoneDigits}&text=${encodedText}`
+      : `https://api.whatsapp.com/send?text=${encodedText}`;
+
+    const a = document.createElement('a');
+    a.href = waUrl;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => a.remove(), 150);
+
+    currentItem.status = 'sent';
+    const statusCell = document.getElementById(`batch-wa-status-${c.id}`);
+    if (statusCell) {
+      statusCell.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300';
+      statusCell.textContent = 'Sent ✓';
+    }
+    const row = document.getElementById(`batch-wa-row-${c.id}`);
+    if (row) row.classList.add('bg-emerald-50/40');
+
+    state.batchWhatsApp.currentIndex++;
+
+    if (state.batchWhatsApp.currentIndex < queue.length) {
+      const nextItem = queue[state.batchWhatsApp.currentIndex];
+      const nextName = nextItem.client.businessName || nextItem.client.name;
+      const nextDue = formatCurrency(nextItem.ledger.finalBalance);
+
+      if (currentItemHint) {
+        currentItemHint.innerHTML = `Next: <strong>${escapeHtml(nextName)}</strong> (${nextDue} due)`;
+      }
+      if (manualBtn) {
+        manualBtn.innerHTML = `<span>Send Next (${state.batchWhatsApp.currentIndex + 1}/${queue.length}) ➡️</span>`;
+      }
+
+      const autoAdvance = document.getElementById('batch-wa-auto-advance')?.checked;
+      if (autoAdvance) {
+        state.batchWhatsApp.timer = setTimeout(() => {
+          processNextInBatchQueue();
+        }, 2500);
+      }
+    } else {
+      processNextInBatchQueue();
+    }
+  }
+
+  function sendNextInBatchQueue() {
+    if (!state.batchWhatsApp) return;
+    if (state.batchWhatsApp.timer) {
+      clearTimeout(state.batchWhatsApp.timer);
+      state.batchWhatsApp.timer = null;
+    }
+    processNextInBatchQueue();
+  }
+
+  function stopBatchWhatsAppQueue() {
+    if (!state.batchWhatsApp) return;
+    if (state.batchWhatsApp.timer) {
+      clearTimeout(state.batchWhatsApp.timer);
+      state.batchWhatsApp.timer = null;
+    }
+    state.batchWhatsApp.isRunning = false;
+    const progressText = document.getElementById('batch-wa-progress-text');
+    if (progressText) progressText.textContent = 'Batch WhatsApp Queue Stopped / Paused.';
+  }
+
+  function copyBatchWhatsAppSummary() {
+    if (!state.batchWhatsApp) return;
+    const allItems = state.batchWhatsApp.items || [];
+    const selectedItems = allItems.filter(item => state.batchWhatsApp.selectedClientIds.has(String(item.client.id)));
+
+    if (selectedItems.length === 0) {
+      showToast('No clients selected to copy summary.', true);
+      return;
+    }
+
+    const businessTitle = state.settings.businessName || 'Digital CA Services';
+    const totalDue = selectedItems.reduce((sum, item) => sum + (Number(item.ledger.finalBalance) || 0), 0);
+
+    let text = `📋 PENDING DUES SUMMARY - ${businessTitle.toUpperCase()}\n`;
+    text += `Date: ${formatDate(getTodayDate())}\n`;
+    text += `Total Outstanding: ${formatCurrency(totalDue)} (${selectedItems.length} Clients)\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+    selectedItems.forEach((item, idx) => {
+      const c = item.client;
+      const l = item.ledger;
+      const monthsStr = (item.unpaidRows || []).map(r => r.fullMonthName).join(', ');
+      text += `${idx + 1}. ${c.businessName || c.name}${c.businessName ? ` (${c.name})` : ''}\n`;
+      text += `   • Phone: ${c.phone || 'No phone'}\n`;
+      text += `   • Pending Balance: ${formatCurrency(l.finalBalance)}\n`;
+      text += `   • Months: ${monthsStr || 'Unallocated due'}\n\n`;
+    });
+
+    text += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `Generated via Client Ledger Pro`;
+
+    if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('Pending dues summary copied to clipboard! 📋');
+      }).catch(() => {
+        fallbackCopyTextToClipboard(text);
+      });
+    } else {
+      fallbackCopyTextToClipboard(text);
+    }
+  }
+
+  function fallbackCopyTextToClipboard(text) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand('copy');
+      showToast('Pending dues summary copied to clipboard! 📋');
+    } catch (err) {
+      showToast('Could not copy to clipboard', true);
+    }
+    textArea.remove();
+  }
+
+  function toggleBatchWaSamplePreview() {
+    const previewBox = document.getElementById('batch-wa-sample-preview');
+    if (previewBox) {
+      previewBox.classList.toggle('hidden');
+    }
   }
 
   // ==================== EXPORT & IMPORT ====================
@@ -4950,6 +5400,18 @@ WHERE id = 'main_store';`;
     setMonthBreakdownFilter,
     printPendingInvoice,
     sendPendingInvoiceWhatsApp,
+    openBatchPendingWhatsAppModal,
+    renderBatchWhatsAppTable,
+    toggleSelectAllBatchWhatsApp,
+    onBatchWaClientToggle,
+    filterBatchWhatsAppList,
+    updateClientPhoneInline,
+    sendSingleBatchWhatsApp,
+    startBatchWhatsAppQueue,
+    sendNextInBatchQueue,
+    stopBatchWhatsAppQueue,
+    copyBatchWhatsAppSummary,
+    toggleBatchWaSamplePreview,
     changeCurrency,
     exportJSON,
     importJSON,
