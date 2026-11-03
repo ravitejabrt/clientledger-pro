@@ -98,13 +98,15 @@
 
   /* Explicitly hide any modal that has the hidden class */
   #printStatementModal.hidden,
-  #paymentReceiptModal.hidden {
+  #paymentReceiptModal.hidden,
+  #pendingInvoiceModal.hidden {
     display: none !important;
   }
 
   /* Make sure ONLY the currently open/active modal content takes the full printable page */
   #printStatementModal:not(.hidden),
-  #paymentReceiptModal:not(.hidden) {
+  #paymentReceiptModal:not(.hidden),
+  #pendingInvoiceModal:not(.hidden) {
     position: static !important;
     background: none !important;
     padding: 0 !important;
@@ -113,7 +115,8 @@
   }
 
   #printStatementModal:not(.hidden) > div,
-  #paymentReceiptModal:not(.hidden) > div {
+  #paymentReceiptModal:not(.hidden) > div,
+  #pendingInvoiceModal:not(.hidden) > div {
     max-width: 100% !important;
     box-shadow: none !important;
     border: none !important;

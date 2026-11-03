@@ -42,6 +42,7 @@
     activeClientId: null,
     searchQuery: '',
     statusFilter: 'all',
+    monthBreakdownFilter: 'all',
     dashboardFilter: {
       preset: 'all',
       from: '',
@@ -1902,18 +1903,74 @@ WHERE id = 'main_store';`;
     if (breakdownTbody) {
       // Reverse chronological order for ledger (latest month at top)
       const reversedBreakdown = [...ledger.monthlyBreakdown].reverse();
+      const unpaidBreakdown = reversedBreakdown.filter(row => row.balance > 0);
+      const paidBreakdown = reversedBreakdown.filter(row => row.balance <= 0);
 
-      if (reversedBreakdown.length === 0) {
+      // Update badge counts on filter buttons
+      const unpaidBadge = document.getElementById('month-unpaid-badge');
+      const paidBadge = document.getElementById('month-paid-badge');
+      if (unpaidBadge) unpaidBadge.textContent = unpaidBreakdown.length;
+      if (paidBadge) paidBadge.textContent = paidBreakdown.length;
+
+      // Update active filter button styling
+      const filterMode = state.monthBreakdownFilter || 'all';
+      ['all', 'unpaid', 'paid'].forEach(type => {
+        const btn = document.getElementById(`month-filter-${type}`);
+        if (!btn) return;
+        if (type === filterMode) {
+          btn.className = 'px-3 py-1.5 rounded-lg bg-white text-slate-900 shadow-2xs font-bold transition';
+        } else {
+          btn.className = 'px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/60 font-semibold transition flex items-center gap-1.5';
+        }
+      });
+
+      // Update Pending Invoices Action Banner
+      const actionBanner = document.getElementById('unpaid-months-action-banner');
+      const bannerAmount = document.getElementById('unpaid-banner-amount');
+      const bannerCount = document.getElementById('unpaid-banner-count');
+      const bannerMonths = document.getElementById('unpaid-banner-months');
+
+      if (actionBanner) {
+        if (filterMode === 'unpaid' || (unpaidBreakdown.length > 0 && filterMode === 'all')) {
+          actionBanner.classList.remove('hidden');
+          const totalUnpaidDue = unpaidBreakdown.reduce((sum, r) => sum + (Number(r.balance) || 0), 0);
+          if (bannerAmount) bannerAmount.textContent = formatCurrency(totalUnpaidDue);
+          if (bannerCount) bannerCount.textContent = `${unpaidBreakdown.length} Month(s) Pending`;
+          if (bannerMonths) {
+            if (unpaidBreakdown.length > 0) {
+              bannerMonths.textContent = `Pending months: ${unpaidBreakdown.map(r => r.fullMonthName).join(', ')}`;
+            } else {
+              bannerMonths.textContent = 'All billing months are fully cleared! No dues pending.';
+            }
+          }
+        } else {
+          actionBanner.classList.add('hidden');
+        }
+      }
+
+      // Filter rows based on selected status filter
+      let displayRows = reversedBreakdown;
+      if (filterMode === 'unpaid') {
+        displayRows = unpaidBreakdown;
+      } else if (filterMode === 'paid') {
+        displayRows = paidBreakdown;
+      }
+
+      if (displayRows.length === 0) {
+        const emptyMsg = filterMode === 'unpaid'
+          ? '🎉 Great news! No unpaid months. All completed billing months are fully paid.'
+          : filterMode === 'paid'
+          ? 'No fully paid months found yet.'
+          : 'No completed billing months yet.';
         breakdownTbody.innerHTML = `
           <tr>
             <td colspan="7" class="py-8 text-center text-slate-400">
-              <div class="text-sm font-semibold text-slate-600">No completed billing months yet</div>
-              <div class="text-xs text-slate-400 mt-1">Client joined in the current month (${formatMonthName(client.startMonth)}). Current month dues are allocated only after the month completes.</div>
+              <div class="text-sm font-semibold text-slate-600">${emptyMsg}</div>
             </td>
           </tr>
         `;
       } else {
-        breakdownTbody.innerHTML = reversedBreakdown
+        breakdownTbody.innerHTML = displayRows
           .map(row => {
           let feeTypeBadge = '';
           if (row.isOverridden) {
@@ -1985,14 +2042,28 @@ WHERE id = 'main_store';`;
             <td class="py-3 px-4">
               ${statusBadge}
             </td>
-            <td class="py-3 px-4 text-right">
+            <td class="py-3 px-4 text-right whitespace-nowrap">
               <div class="flex items-center justify-end gap-1.5">
+                ${
+                  row.balance > 0
+                    ? `
+                      <button onclick="app.sendPendingInvoiceWhatsApp('${row.month}')" class="text-xs text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 font-semibold px-2 py-1 rounded transition flex items-center gap-1 shadow-2xs" title="Send Pending Invoice for ${row.fullMonthName} to WhatsApp">
+                        <svg class="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                        WhatsApp
+                      </button>
+                      <button onclick="app.printPendingInvoice('${row.month}')" class="text-xs text-slate-700 hover:text-slate-900 bg-white border border-slate-300 hover:bg-slate-50 font-semibold px-2 py-1 rounded transition flex items-center gap-1 shadow-2xs" title="Print Invoice for ${row.fullMonthName}">
+                        <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                        Print
+                      </button>
+                    `
+                    : ''
+                }
                 <button onclick="app.openOverrideMonthModal('${client.id}', '${row.month}')" class="px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-50 rounded transition" title="Change payment amount for ${row.fullMonthName}">
                   Change Fee
                 </button>
                 ${
                   row.balance > 0
-                    ? `<button onclick="app.openRecordPaymentForMonth('${client.id}', '${row.month}', ${row.balance})" class="px-2 py-1 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded transition shadow-xs" title="Pay ${formatCurrency(row.balance)} for this month">
+                    ? `<button onclick="app.openRecordPaymentForMonth('${client.id}', '${row.month}', ${row.balance})" class="px-2.5 py-1 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded transition shadow-xs flex items-center gap-1" title="Pay ${formatCurrency(row.balance)} for this month">
                         Pay ${formatCurrency(row.balance)}
                        </button>`
                     : ''
@@ -3241,6 +3312,7 @@ WHERE id = 'main_store';`;
 
   // Active receipt context for modal WhatsApp button
   let activeReceiptContext = null;
+  let activePendingInvoiceContext = null;
 
   // ==================== PAYMENT RECEIPT / INVOICE PRINT ====================
   function printPaymentReceipt(clientId, paymentId) {
@@ -3524,6 +3596,275 @@ WHERE id = 'main_store';`;
     }
   }
 
+  // ==================== MONTH BREAKDOWN FILTER & PENDING INVOICE ====================
+  function setMonthBreakdownFilter(filterType) {
+    state.monthBreakdownFilter = filterType || 'all';
+    if (state.activeClientId) {
+      renderClientDetail(state.activeClientId);
+    }
+  }
+
+  function printPendingInvoice(explicitMonth = null) {
+    const cId = state.activeClientId;
+    const client = (state.clients || []).find(c => String(c.id) === String(cId));
+    if (!client) {
+      showToast('Client not found', true);
+      return;
+    }
+
+    const ledger = calculateClientLedger(client) || { monthlyBreakdown: [], totalBilled: 0, totalPaid: 0, finalBalance: 0 };
+    let unpaidRows = (ledger.monthlyBreakdown || []).filter(r => r.balance > 0);
+
+    if (explicitMonth) {
+      unpaidRows = unpaidRows.filter(r => r.month === explicitMonth);
+      if (unpaidRows.length === 0) {
+        const rowExists = (ledger.monthlyBreakdown || []).some(r => r.month === explicitMonth);
+        showToast(rowExists ? 'This month is already fully paid!' : 'Selected month not found', false);
+        return;
+      }
+    } else {
+      if (unpaidRows.length === 0) {
+        showToast('🎉 All billing months are fully paid! No pending invoices.', false);
+        return;
+      }
+    }
+
+    activePendingInvoiceContext = { clientId: client.id, explicitMonth: explicitMonth || null };
+
+    const container = document.getElementById('printable-pending-invoice-content');
+    if (!container) return;
+
+    const totalInvoiceDue = unpaidRows.reduce((sum, r) => sum + (Number(r.balance) || 0), 0);
+    const totalInvoiceBilled = unpaidRows.reduce((sum, r) => sum + (Number(r.billed) || 0), 0);
+    const totalInvoicePaid = unpaidRows.reduce((sum, r) => sum + (Number(r.paid) || 0), 0);
+
+    const safeClientId = client.id ? String(client.id).replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() : '001';
+    const invoiceNo = `INV-DUE-${safeClientId}-${getTodayDate().replace(/-/g, '')}`;
+    const invoiceScope = explicitMonth
+      ? `Single Month Due: ${unpaidRows[0].fullMonthName}`
+      : `All Outstanding Dues (${unpaidRows.length} Month${unpaidRows.length > 1 ? 's' : ''})`;
+
+    container.innerHTML = `
+      <div class="space-y-6 text-slate-800">
+        <!-- Top Header & Business Details -->
+        <div class="flex justify-between items-start border-b-2 border-red-900/80 pb-5">
+          <div class="space-y-1">
+            <span class="inline-block px-2.5 py-0.5 rounded text-[11px] font-black uppercase tracking-wider bg-red-100 text-red-800">
+              Official Pending Dues Invoice / Demand Note
+            </span>
+            <h1 class="text-2xl font-black text-slate-950 tracking-tight mt-1">${escapeHtml(state.settings.businessName || 'Digital CA Services')}</h1>
+            ${state.settings.businessAddress ? `<p class="text-xs text-slate-600">${escapeHtml(state.settings.businessAddress)}</p>` : ''}
+            <div class="text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-0.5 pt-0.5">
+              ${state.settings.businessPhone ? `<span><strong>Phone:</strong> ${escapeHtml(state.settings.businessPhone)}</span>` : ''}
+              ${state.settings.businessEmail ? `<span><strong>Email:</strong> ${escapeHtml(state.settings.businessEmail)}</span>` : ''}
+            </div>
+          </div>
+          <div class="text-right">
+            <h2 class="text-xl font-extrabold text-red-700 uppercase tracking-wider">Demand Invoice</h2>
+            <div class="mt-2 text-xs text-slate-600 space-y-1">
+              <p><span class="font-bold text-slate-700">Invoice No:</span> <span class="font-mono font-bold text-slate-900">${escapeHtml(invoiceNo)}</span></p>
+              <p><span class="font-bold text-slate-700">Invoice Date:</span> ${formatDate(getTodayDate())}</p>
+              <p><span class="font-bold text-slate-700">Payment Status:</span> <span class="font-bold text-red-600 uppercase">Payment Pending</span></p>
+              <p><span class="font-bold text-slate-700">Due Date:</span> <span class="font-semibold text-slate-900">Immediate / Upon Receipt</span></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Client Info & Total Due Box -->
+        <div class="grid grid-cols-2 gap-4 bg-red-50/50 p-4 rounded-xl border border-red-200">
+          <div>
+            <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">Bill To (Client Details):</span>
+            <h3 class="text-base font-bold text-slate-900 mt-0.5">${escapeHtml(client.businessName || client.name)}</h3>
+            ${client.businessName && client.name ? `<p class="text-xs text-slate-600 font-medium">Contact Person: ${escapeHtml(client.name)}</p>` : ''}
+            <div class="text-xs text-slate-500 mt-1 space-y-0.5">
+              ${client.phone ? `<p>Phone: ${escapeHtml(client.phone)}</p>` : ''}
+              ${client.email ? `<p>Email: ${escapeHtml(client.email)}</p>` : ''}
+              ${client.gstNumber ? `<p>GSTIN: <span class="font-mono">${escapeHtml(client.gstNumber)}</span></p>` : ''}
+            </div>
+          </div>
+          <div class="text-right flex flex-col justify-center border-l border-red-200 pl-4">
+            <span class="text-[10px] font-black uppercase tracking-wider text-red-700">Total Pending Amount Payable:</span>
+            <div class="text-3xl font-black text-red-600 tracking-tight mt-0.5">
+              ${formatCurrency(totalInvoiceDue)}
+            </div>
+            <p class="text-xs font-semibold text-slate-600 mt-1">
+              Scope: ${escapeHtml(invoiceScope)}
+            </p>
+          </div>
+        </div>
+
+        <!-- Itemized Unpaid Months Table -->
+        <div class="border border-slate-200 rounded-xl overflow-hidden">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-100 font-bold text-slate-700 uppercase tracking-wider text-[11px] border-b border-slate-200">
+              <tr>
+                <th class="py-2.5 px-4">Billing Month</th>
+                <th class="py-2.5 px-4">Fee Structure</th>
+                <th class="py-2.5 px-4 text-right">Billed (₹)</th>
+                <th class="py-2.5 px-4 text-right">Paid Towards Month (₹)</th>
+                <th class="py-2.5 px-4 text-right">Pending Balance (₹)</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${unpaidRows.map(row => `
+                <tr class="hover:bg-slate-50/60">
+                  <td class="py-3 px-4 font-bold text-slate-900">
+                    ${escapeHtml(row.fullMonthName)}
+                  </td>
+                  <td class="py-3 px-4 text-slate-600">
+                    ${row.isOverridden ? `Custom Fee${row.overrideNote ? ` (${escapeHtml(row.overrideNote)})` : ''}` : 'Fixed Monthly Fee'}
+                  </td>
+                  <td class="py-3 px-4 text-right font-medium text-slate-800">
+                    ${formatCurrency(row.billed)}
+                  </td>
+                  <td class="py-3 px-4 text-right font-medium text-emerald-600">
+                    ${formatCurrency(row.paid)}
+                  </td>
+                  <td class="py-3 px-4 text-right font-bold text-red-600 text-sm">
+                    ${formatCurrency(row.balance)}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+            <tfoot class="bg-slate-100 border-t-2 border-slate-300 font-bold text-xs">
+              <tr class="text-slate-900">
+                <td colspan="2" class="py-2.5 px-4 uppercase text-[11px] font-black">
+                  Total Outstanding For Mentioned Months:
+                </td>
+                <td class="py-2.5 px-4 text-right">${formatCurrency(totalInvoiceBilled)}</td>
+                <td class="py-2.5 px-4 text-right text-emerald-700">${formatCurrency(totalInvoicePaid)}</td>
+                <td class="py-2.5 px-4 text-right font-black text-red-600 text-base">${formatCurrency(totalInvoiceDue)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <!-- Overall Client Ledger Standing -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs">
+          <div>
+            <span class="text-slate-500">Cumulative Billed to Date:</span> <strong class="text-slate-800">${formatCurrency(ledger.totalBilled)}</strong>
+            <span class="mx-2 text-slate-300">|</span>
+            <span class="text-slate-500">Cumulative Paid to Date:</span> <strong class="text-emerald-700">${formatCurrency(ledger.totalPaid)}</strong>
+          </div>
+          <div class="font-bold">
+            <span class="text-slate-600">Total Net Outstanding Balance:</span>
+            <span class="ml-1 text-sm font-black text-red-600">
+              ${formatCurrency(ledger.finalBalance)}
+            </span>
+          </div>
+        </div>
+
+        <!-- Payment Instructions & Signature -->
+        <div class="pt-6 border-t border-slate-200 flex justify-between items-end text-xs text-slate-500">
+          <div class="space-y-1">
+            <p class="font-bold text-slate-700">Payment Remittance Instructions:</p>
+            <p class="text-[11px] text-slate-600">Please settle the pending balance via Bank Transfer (NEFT/RTGS), UPI, or Cash.</p>
+            <p class="text-[10px] text-slate-400">Computer-generated pending dues demand invoice &bull; ${escapeHtml(state.settings.businessName || '')}</p>
+          </div>
+          <div class="text-center">
+            <div class="w-48 border-b border-slate-400 pb-10"></div>
+            <p class="mt-1 font-bold text-slate-800">Authorized Signatory</p>
+            <p class="text-[10px] text-slate-400">${escapeHtml(state.settings.businessName || '')}</p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    openModal('pendingInvoiceModal');
+  }
+
+  function sendPendingInvoiceWhatsApp(explicitMonth = null) {
+    const cId = state.activeClientId || (activePendingInvoiceContext ? activePendingInvoiceContext.clientId : null);
+    const client = (state.clients || []).find(c => String(c.id) === String(cId));
+    if (!client) {
+      showToast('Client not found', true);
+      return;
+    }
+
+    const targetMonth = explicitMonth || (activePendingInvoiceContext && activePendingInvoiceContext.explicitMonth ? activePendingInvoiceContext.explicitMonth : null);
+    const ledger = calculateClientLedger(client) || { monthlyBreakdown: [], totalBilled: 0, totalPaid: 0, finalBalance: 0 };
+    let unpaidRows = (ledger.monthlyBreakdown || []).filter(r => r.balance > 0);
+
+    if (targetMonth) {
+      unpaidRows = unpaidRows.filter(r => r.month === targetMonth);
+    }
+
+    if (unpaidRows.length === 0) {
+      showToast(targetMonth ? 'This month has no pending balance!' : '🎉 All billing months are fully paid! No pending dues.', false);
+      return;
+    }
+
+    const totalDue = unpaidRows.reduce((sum, r) => sum + (Number(r.balance) || 0), 0);
+    const businessTitle = state.settings.businessName || 'Digital CA Services';
+
+    let msg = `🔔 *PENDING DUES INVOICE / PAYMENT REMINDER*\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `*From:* ${businessTitle}\n`;
+    if (state.settings.businessPhone) {
+      msg += `*Contact:* ${state.settings.businessPhone}\n`;
+    }
+    msg += `*Date:* ${formatDate(getTodayDate())}\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `*Dear ${client.businessName || client.name},*\n\n`;
+    msg += `This is a friendly reminder regarding outstanding professional fee / service dues:\n\n`;
+
+    if (targetMonth && unpaidRows.length === 1) {
+      const r = unpaidRows[0];
+      msg += `📌 *Pending Month:* ${r.fullMonthName}\n`;
+      msg += `*Billed Amount:* ${formatCurrency(r.billed)}\n`;
+      if (r.paid > 0) {
+        msg += `*Already Paid:* ${formatCurrency(r.paid)}\n`;
+      }
+      msg += `*Pending Balance:* ${formatCurrency(r.balance)}\n\n`;
+    } else {
+      msg += `📌 *Outstanding Months Breakdown (${unpaidRows.length} Month${unpaidRows.length > 1 ? 's' : ''}):*\n`;
+      unpaidRows.forEach(r => {
+        msg += `• *${r.fullMonthName}:* ${formatCurrency(r.balance)} due${r.paid > 0 ? ` (Paid: ${formatCurrency(r.paid)} of ${formatCurrency(r.billed)})` : ` (Billed: ${formatCurrency(r.billed)})`}\n`;
+      });
+      msg += `\n`;
+    }
+
+    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `*TOTAL PENDING DUE: ${formatCurrency(totalDue)}*\n`;
+    if (ledger.finalBalance !== totalDue) {
+      msg += `*Overall Ledger Balance: ${formatCurrency(ledger.finalBalance)}*\n`;
+    }
+    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `Kindly clear the pending amount at your earliest convenience.\n`;
+    msg += `If you have already transferred the payment, please share the transaction reference / screenshot.\n\n`;
+    msg += `_Thank you!_\n`;
+    msg += `_${businessTitle}_`;
+
+    let phoneDigits = normalizeWhatsAppPhone(client.phone);
+    if (!phoneDigits) {
+      const entered = prompt(
+        `No phone number found for ${client.name || 'this client'}.\nPlease enter WhatsApp number (10 digits):`,
+        ''
+      );
+      if (entered === null) return;
+      phoneDigits = normalizeWhatsAppPhone(entered);
+      if (phoneDigits) {
+        client.phone = entered.trim();
+        saveData();
+      }
+    }
+
+    const encodedText = encodeURIComponent(msg);
+    const waUrl = phoneDigits
+      ? `https://api.whatsapp.com/send?phone=${phoneDigits}&text=${encodedText}`
+      : `https://api.whatsapp.com/send?text=${encodedText}`;
+
+    const a = document.createElement('a');
+    a.href = waUrl;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => a.remove(), 100);
+
+    showToast(phoneDigits ? `Opening WhatsApp for ${client.name || 'client'}...` : 'Opening WhatsApp with pending dues invoice...');
+  }
+
   // ==================== EXPORT & IMPORT ====================
   function exportJSON() {
     const data = {
@@ -3789,6 +4130,7 @@ WHERE id = 'main_store';`;
       'editClientModal',
       'printStatementModal',
       'paymentReceiptModal',
+      'pendingInvoiceModal',
       'editBusinessProfileModal',
       'cloudDatabaseModal',
     ];
@@ -3877,6 +4219,9 @@ WHERE id = 'main_store';`;
     printPaymentReceipt,
     sendPaymentWhatsApp,
     sendActiveReceiptWhatsApp,
+    setMonthBreakdownFilter,
+    printPendingInvoice,
+    sendPendingInvoiceWhatsApp,
     changeCurrency,
     exportJSON,
     importJSON,
