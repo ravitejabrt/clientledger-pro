@@ -194,6 +194,33 @@
     return false;
   }
 
+  // Helper to determine the effective recurring fee for any specific month
+  // Handles fee revisions (feeSchedule) applied from a particular month onwards
+  function getClientBaseFeeForMonth(client, monthStr) {
+    if (!client || !monthStr) return 0;
+    const isYearly = client.billingCycle === 'yearly';
+    const fallbackBase = isYearly
+      ? Number(client.fixedYearlyAmount || client.fixedMonthlyAmount || 0)
+      : Number(client.fixedMonthlyAmount || 0);
+
+    if (Array.isArray(client.feeSchedule) && client.feeSchedule.length > 0) {
+      const targetM = isYearly && String(monthStr).length === 4 ? `${monthStr}-01` : monthStr;
+      const applicable = client.feeSchedule
+        .filter(entry => {
+          if (!entry || !entry.fromMonth) return false;
+          const entryM = isYearly && String(entry.fromMonth).length === 4 ? `${entry.fromMonth}-01` : entry.fromMonth;
+          return compareMonths(entryM, targetM) <= 0;
+        })
+        .sort((a, b) => compareMonths(a.fromMonth, b.fromMonth));
+
+      if (applicable.length > 0) {
+        return Number(applicable[applicable.length - 1].amount);
+      }
+    }
+
+    return fallbackBase;
+  }
+
   // ==================== CALCULATION ENGINE ====================
   /**
    * Calculates the full financial ledger for a client:
@@ -275,6 +302,8 @@
       const isHold = !!holdInfo;
       const holdReason = holdInfo ? (holdInfo.reason || client.holdReason || 'Client on hold') : '';
 
+      const baseYearlyFee = getClientBaseFeeForMonth(client, y);
+
       if (isOverridden) {
         billed = Number(override.amount);
         overrideNote = override.note || '';
@@ -282,7 +311,7 @@
         billed = 0;
         overrideNote = `⏸️ On Hold (${holdReason})`;
       } else {
-        billed = Number(client.fixedYearlyAmount || client.fixedMonthlyAmount || 0) + combinedFees;
+        billed = baseYearlyFee + combinedFees;
         if (combinedFees > 0) {
           isOverridden = true;
           const feeParts = [];
@@ -329,7 +358,7 @@
         holdReason,
         isOverridden,
         overrideNote,
-        defaultFee: Number(client.fixedYearlyAmount || client.fixedMonthlyAmount || 0),
+        defaultFee: baseYearlyFee,
         directPaid,
         fifoAllocated,
         paid: totalYearPaid,
@@ -428,6 +457,8 @@
       const isHold = !!holdInfo;
       const holdReason = holdInfo ? (holdInfo.reason || client.holdReason || 'Client on hold') : '';
 
+      const baseMonthlyFee = getClientBaseFeeForMonth(client, m);
+
       if (isOverridden) {
         billed = Number(override.amount);
         overrideNote = override.note || '';
@@ -435,7 +466,7 @@
         billed = 0;
         overrideNote = `⏸️ On Hold (${holdReason})`;
       } else {
-        billed = Number(client.fixedMonthlyAmount || 0) + combinedFees;
+        billed = baseMonthlyFee + combinedFees;
         if (combinedFees > 0) {
           isOverridden = true;
           const feeParts = [];
@@ -484,7 +515,7 @@
         holdReason,
         isOverridden,
         overrideNote,
-        defaultFee: Number(client.fixedMonthlyAmount || 0),
+        defaultFee: baseMonthlyFee,
         directPaid,
         fifoAllocated,
         paid: totalMonthPaid,
@@ -3004,7 +3035,7 @@ WHERE id = 'main_store';`;
     }
   }
 
-  // Override / Change Fee for a Particular Month or Year
+  // Override / Change Fee for a Particular Month or Year (Single Month vs From This Month Onwards)
   function openOverrideMonthModal(clientId, specificPeriod = null) {
     const client = state.clients.find(c => c.id === clientId);
     if (!client) return;
@@ -3035,6 +3066,10 @@ WHERE id = 'main_store';`;
     const targetPeriod = specificPeriod || (isYearly ? String(new Date().getFullYear()) : getLastMonth());
     monthInput.value = targetPeriod;
 
+    // Reset radio to 'single' default
+    const radioSingle = document.getElementById('override-scope-single');
+    if (radioSingle) radioSingle.checked = true;
+
     onOverrideMonthChange(targetPeriod);
     openModal('overrideMonthModal');
   }
@@ -3048,9 +3083,25 @@ WHERE id = 'main_store';`;
     const amountInput = document.getElementById('override-amount');
     const noteInput = document.getElementById('override-note');
     const resetBtn = document.getElementById('btn-reset-month-override');
+    const singleTitle = document.getElementById('scope-single-title');
+    const fromNowTitle = document.getElementById('scope-from-now-title');
+    const periodLabel = isYearly ? `Year ${selectedMonth}` : formatMonthName(selectedMonth);
 
+    if (singleTitle) singleTitle.textContent = `Change only ${periodLabel}`;
+    if (fromNowTitle) fromNowTitle.textContent = `Change fee from ${periodLabel}`;
+
+    const existingSchedule = Array.isArray(client.feeSchedule) ? client.feeSchedule.find(s => s.fromMonth === selectedMonth) : null;
     const existingOverride = client.monthOverrides && (client.monthOverrides[selectedMonth] || (isYearly ? client.monthOverrides[`${selectedMonth}-01`] : null));
-    if (existingOverride && existingOverride.amount !== undefined) {
+
+    if (existingSchedule && existingSchedule.amount !== undefined) {
+      const radioFromNow = document.getElementById('override-scope-from-now');
+      if (radioFromNow) radioFromNow.checked = true;
+      amountInput.value = existingSchedule.amount;
+      noteInput.value = existingSchedule.note || '';
+      if (resetBtn) resetBtn.classList.remove('hidden');
+    } else if (existingOverride && existingOverride.amount !== undefined) {
+      const radioSingle = document.getElementById('override-scope-single');
+      if (radioSingle) radioSingle.checked = true;
       amountInput.value = existingOverride.amount;
       noteInput.value = existingOverride.note || '';
       if (resetBtn) resetBtn.classList.remove('hidden');
@@ -3058,15 +3109,43 @@ WHERE id = 'main_store';`;
       const isStart = isYearly ? (selectedMonth === (client.startYear || (client.startMonth ? client.startMonth.split('-')[0] : ''))) : (selectedMonth === (client.startMonth || ''));
       const extraAmt = isStart ? Number(client.extraFee || 0) : 0;
       const itAmt = isStart ? Number(client.incomeTaxFee || 0) : 0;
-      const baseFee = isYearly ? (client.fixedYearlyAmount || client.fixedMonthlyAmount || 0) : (client.fixedMonthlyAmount || 0);
+      const baseFee = getClientBaseFeeForMonth(client, selectedMonth);
       amountInput.value = baseFee + extraAmt + itAmt;
       noteInput.value = '';
       if (resetBtn) resetBtn.classList.add('hidden');
     }
+
+    onOverrideScopeChange();
+  }
+
+  function onOverrideScopeChange() {
+    const isFromNow = document.getElementById('override-scope-from-now')?.checked;
+    const monthVal = document.getElementById('override-month')?.value;
+    const clientId = document.getElementById('override-client-id')?.value;
+    const client = state.clients.find(c => c.id === clientId);
+    const isYearly = client && client.billingCycle === 'yearly';
+    const periodLabel = monthVal ? (isYearly ? `Year ${monthVal}` : formatMonthName(monthVal)) : 'this month';
+
+    const amountLabel = document.getElementById('override-amount-label');
+    const noteLabel = document.getElementById('override-note-label');
+    const scopeHint = document.getElementById('override-scope-hint');
+    const submitBtn = document.getElementById('override-submit-btn');
+
+    if (isFromNow) {
+      if (amountLabel) amountLabel.textContent = `New Recurring Fee (From ${periodLabel} onwards) *`;
+      if (noteLabel) noteLabel.textContent = `Reason for Fee Revision (Optional)`;
+      if (scopeHint) scopeHint.innerHTML = `<span>🔄</span> <strong>Permanent Revision:</strong> Applies this new fee to <strong>${periodLabel} and all future months</strong>. Previous months remain unchanged.`;
+      if (submitBtn) submitBtn.textContent = 'Save Fee From This Month';
+    } else {
+      if (amountLabel) amountLabel.textContent = `New Fee for ${periodLabel} Only *`;
+      if (noteLabel) noteLabel.textContent = `Reason / Note for ${periodLabel}`;
+      if (scopeHint) scopeHint.innerHTML = `<span>📅</span> <strong>Single Month Only:</strong> Only overrides <strong>${periodLabel}</strong>. Other months continue with their normal fee.`;
+      if (submitBtn) submitBtn.textContent = 'Save Single Month Fee';
+    }
   }
 
   function handleSaveMonthOverride(e) {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     const clientId = document.getElementById('override-client-id').value;
     const client = state.clients.find(c => c.id === clientId);
     if (!client) return;
@@ -3074,18 +3153,63 @@ WHERE id = 'main_store';`;
     const period = document.getElementById('override-month').value;
     const newAmount = Number(document.getElementById('override-amount').value);
     const note = document.getElementById('override-note').value.trim();
-
-    if (!client.monthOverrides) client.monthOverrides = {};
-
-    client.monthOverrides[period] = {
-      amount: newAmount,
-      note,
-    };
-
-    saveData();
-    closeModal('overrideMonthModal');
+    const scope = document.querySelector('input[name="override-scope"]:checked')?.value || 'single';
     const isYearly = client.billingCycle === 'yearly';
-    showToast(`Fee for ${isYearly ? `Year ${period}` : formatMonthName(period)} updated to ${formatCurrency(newAmount)}`);
+    const periodLabel = isYearly ? `Year ${period}` : formatMonthName(period);
+
+    if (scope === 'from_this_month') {
+      if (!Array.isArray(client.feeSchedule)) {
+        client.feeSchedule = [];
+        const startP = isYearly ? (client.startYear || '2000') : (client.startMonth || '2000-01');
+        const origBase = isYearly ? Number(client.fixedYearlyAmount || client.fixedMonthlyAmount || 0) : Number(client.fixedMonthlyAmount || 0);
+        if (compareMonths(startP, period) < 0) {
+          client.feeSchedule.push({
+            fromMonth: startP,
+            amount: origBase,
+            note: 'Initial base fee',
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+
+      client.feeSchedule = client.feeSchedule.filter(s => s.fromMonth !== period);
+      client.feeSchedule.push({
+        fromMonth: period,
+        amount: newAmount,
+        note: note || `Fee revised from ${periodLabel}`,
+        createdAt: new Date().toISOString(),
+      });
+      client.feeSchedule.sort((a, b) => compareMonths(a.fromMonth, b.fromMonth));
+
+      const currentPeriod = isYearly ? String(new Date().getFullYear()) : getCurrentYearMonth();
+      if (compareMonths(period, currentPeriod) >= 0 || client.feeSchedule[client.feeSchedule.length - 1].fromMonth === period) {
+        if (isYearly) {
+          client.fixedYearlyAmount = newAmount;
+        } else {
+          client.fixedMonthlyAmount = newAmount;
+        }
+      }
+
+      if (client.monthOverrides) {
+        delete client.monthOverrides[period];
+        delete client.monthOverrides[`${period}-01`];
+      }
+
+      saveData();
+      closeModal('overrideMonthModal');
+      showToast(`Fee revised to ${formatCurrency(newAmount)} starting from ${periodLabel} onwards`);
+    } else {
+      if (!client.monthOverrides) client.monthOverrides = {};
+
+      client.monthOverrides[period] = {
+        amount: newAmount,
+        note,
+      };
+
+      saveData();
+      closeModal('overrideMonthModal');
+      showToast(`Fee for ${periodLabel} updated to ${formatCurrency(newAmount)} (single month only)`);
+    }
 
     if (state.activeClientId === clientId) {
       renderClientDetail(clientId);
@@ -3100,16 +3224,43 @@ WHERE id = 'main_store';`;
     if (!client) return;
 
     const period = document.getElementById('override-month').value;
+    const isYearly = client.billingCycle === 'yearly';
+    const periodLabel = isYearly ? `Year ${period}` : formatMonthName(period);
+
+    let didReset = false;
+
     if (client.monthOverrides) {
-      delete client.monthOverrides[period];
-      delete client.monthOverrides[`${period}-01`];
+      if (client.monthOverrides[period] || client.monthOverrides[`${period}-01`]) {
+        delete client.monthOverrides[period];
+        delete client.monthOverrides[`${period}-01`];
+        didReset = true;
+      }
+    }
+
+    if (Array.isArray(client.feeSchedule)) {
+      const idx = client.feeSchedule.findIndex(s => s.fromMonth === period);
+      if (idx !== -1) {
+        client.feeSchedule.splice(idx, 1);
+        didReset = true;
+        if (client.feeSchedule.length > 0) {
+          const latest = client.feeSchedule[client.feeSchedule.length - 1];
+          if (isYearly) client.fixedYearlyAmount = latest.amount;
+          else client.fixedMonthlyAmount = latest.amount;
+        }
+      }
+    }
+
+    if (didReset) {
       saveData();
       closeModal('overrideMonthModal');
-      const isYearly = client.billingCycle === 'yearly';
-      showToast(`Fee for ${isYearly ? `Year ${period}` : formatMonthName(period)} reset to default fixed amount`);
+      showToast(`Fee for ${periodLabel} reset to default`);
       if (state.activeClientId === clientId) {
         renderClientDetail(clientId);
+      } else {
+        renderDashboard();
       }
+    } else {
+      closeModal('overrideMonthModal');
     }
   }
 
@@ -4597,6 +4748,8 @@ WHERE id = 'main_store';`;
     toggleSettingsDropdown,
     openOverrideMonthModal,
     onOverrideMonthChange,
+    onOverrideScopeChange,
+    getClientBaseFeeForMonth,
     handleSaveMonthOverride,
     handleResetMonthOverride,
     openRecordPaymentModal,
