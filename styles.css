@@ -67,7 +67,7 @@
 
 /* PRINT MEDIA STYLES - Crucial for Clean Professional Statements & Invoices */
 @media print {
-  /* Hide all app chrome */
+  /* Hide all app chrome and background views */
   body {
     background-color: #ffffff !important;
     color: #000000 !important;
@@ -82,21 +82,38 @@
   footer,
   #view-dashboard,
   #view-clients,
+  #view-client-detail,
   #view-matrix,
+  #addClientModal,
+  #recordPaymentModal,
+  #editPaymentModal,
+  #overrideMonthModal,
+  #editClientModal,
+  #editBusinessProfileModal,
+  #cloudDatabaseModal,
   .modal-backdrop,
   #toast {
     display: none !important;
   }
 
-  /* Make sure modal content takes full printable page */
-  #printStatementModal {
+  /* Explicitly hide any modal that has the hidden class */
+  #printStatementModal.hidden,
+  #paymentReceiptModal.hidden {
+    display: none !important;
+  }
+
+  /* Make sure ONLY the currently open/active modal content takes the full printable page */
+  #printStatementModal:not(.hidden),
+  #paymentReceiptModal:not(.hidden) {
     position: static !important;
     background: none !important;
     padding: 0 !important;
     display: block !important;
+    width: 100% !important;
   }
 
-  #printStatementModal > div {
+  #printStatementModal:not(.hidden) > div,
+  #paymentReceiptModal:not(.hidden) > div {
     max-width: 100% !important;
     box-shadow: none !important;
     border: none !important;

@@ -916,6 +916,14 @@ WHERE id = 'main_store';`;
     if (!remoteData) return;
     if (Array.isArray(remoteData.clients)) {
       state.clients = remoteData.clients;
+      // Ensure all payments have unique identifiers
+      state.clients.forEach(c => {
+        if (Array.isArray(c.payments)) {
+          c.payments.forEach((p, idx) => {
+            if (!p.id) p.id = 'pay_' + (p.createdAt ? new Date(p.createdAt).getTime() : Date.now()) + '_' + idx;
+          });
+        }
+      });
     } else {
       state.clients = [];
     }
@@ -1132,6 +1140,15 @@ WHERE id = 'main_store';`;
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
           state.clients = JSON.parse(raw);
+          if (Array.isArray(state.clients)) {
+            state.clients.forEach(c => {
+              if (Array.isArray(c.payments)) {
+                c.payments.forEach((p, idx) => {
+                  if (!p.id) p.id = 'pay_' + (p.createdAt ? new Date(p.createdAt).getTime() : Date.now()) + '_' + idx;
+                });
+              }
+            });
+          }
         } else {
           state.clients = [];
         }
@@ -1998,6 +2015,9 @@ WHERE id = 'main_store';`;
         paymentsEmpty.classList.remove('hidden');
       } else {
         paymentsEmpty.classList.add('hidden');
+        (client.payments || []).forEach((p, idx) => {
+          if (!p.id) p.id = 'pay_' + (p.createdAt ? new Date(p.createdAt).getTime() : Date.now()) + '_' + idx;
+        });
         const reversedPayments = [...client.payments].reverse();
 
         paymentsTbody.innerHTML = reversedPayments
@@ -2031,6 +2051,14 @@ WHERE id = 'main_store';`;
               <td class="py-3 px-4 text-xs text-slate-600">${escapeHtml(p.note || '--')}</td>
               <td class="py-3 px-4 text-right whitespace-nowrap">
                 <div class="flex items-center justify-end gap-1.5">
+                  <button onclick="app.sendPaymentWhatsApp('${client.id}', '${p.id}')" class="text-xs text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 font-semibold px-2 py-1 rounded transition flex items-center gap-1 shadow-2xs" title="Send Invoice / Payment Receipt to Registered Client on WhatsApp">
+                    <svg class="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                    WhatsApp
+                  </button>
+                  <button onclick="app.printPaymentReceipt('${client.id}', '${p.id}')" class="text-xs text-slate-700 hover:text-slate-900 bg-white border border-slate-300 hover:bg-slate-50 font-semibold px-2 py-1 rounded transition flex items-center gap-1 shadow-2xs" title="Print Invoice / Payment Receipt for this transaction">
+                    <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                    Print
+                  </button>
                   <button onclick="app.openEditPaymentModal('${client.id}', '${p.id}')" class="text-xs text-blue-600 hover:text-blue-800 font-semibold px-2 py-1 hover:bg-blue-50 rounded transition flex items-center gap-1" title="Edit this payment">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                     Edit
@@ -2898,14 +2926,24 @@ WHERE id = 'main_store';`;
 
   // Edit Payment Transaction
   function openEditPaymentModal(clientId, paymentId) {
-    const client = state.clients.find(c => c.id === clientId);
+    const cId = clientId || state.activeClientId;
+    const client = state.clients.find(c => String(c.id) === String(cId));
     if (!client || !client.payments) return;
 
-    const payment = client.payments.find(p => p.id === paymentId);
+    if (Array.isArray(client.payments)) {
+      client.payments.forEach((p, idx) => {
+        if (!p.id) p.id = 'pay_' + (p.createdAt ? new Date(p.createdAt).getTime() : Date.now()) + '_' + idx;
+      });
+    }
+
+    let payment = client.payments.find(p => String(p.id) === String(paymentId));
+    if (!payment && client.payments.length > 0) {
+      payment = client.payments.find((p, idx) => String(idx) === String(paymentId)) || client.payments[client.payments.length - 1];
+    }
     if (!payment) return;
 
-    document.getElementById('edit-payment-client-id').value = clientId;
-    document.getElementById('edit-payment-id').value = paymentId;
+    document.getElementById('edit-payment-client-id').value = client.id;
+    document.getElementById('edit-payment-id').value = payment.id;
 
     const nameEl = document.getElementById('edit-payment-client-name');
     if (nameEl) {
@@ -3011,14 +3049,25 @@ WHERE id = 'main_store';`;
   }
 
   function handleDeletePayment(clientId, paymentId) {
-    const client = state.clients.find(c => c.id === clientId);
-    if (!client) return;
+    const cId = clientId || state.activeClientId;
+    const client = state.clients.find(c => String(c.id) === String(cId));
+    if (!client || !client.payments) return;
+
+    if (Array.isArray(client.payments)) {
+      client.payments.forEach((p, idx) => {
+        if (!p.id) p.id = 'pay_' + (p.createdAt ? new Date(p.createdAt).getTime() : Date.now()) + '_' + idx;
+      });
+    }
 
     if (confirm('Are you sure you want to delete this payment record? Balance will be updated accordingly.')) {
-      client.payments = client.payments.filter(p => p.id !== paymentId);
+      let filtered = client.payments.filter(p => String(p.id) !== String(paymentId));
+      if (filtered.length === client.payments.length && !isNaN(Number(paymentId))) {
+        filtered = client.payments.filter((_, idx) => String(idx) !== String(paymentId));
+      }
+      client.payments = filtered;
       saveData();
       showToast('Payment record deleted');
-      renderClientDetail(clientId);
+      renderClientDetail(client.id);
     }
   }
 
@@ -3174,6 +3223,305 @@ WHERE id = 'main_store';`;
     `;
 
     openModal('printStatementModal');
+  }
+
+  // Helper for WhatsApp Phone Normalization
+  function normalizeWhatsAppPhone(rawPhone) {
+    if (!rawPhone) return '';
+    let digits = String(rawPhone).replace(/\D/g, '');
+    if (!digits) return '';
+    if (digits.length === 11 && digits.startsWith('0')) {
+      digits = digits.slice(1);
+    }
+    if (digits.length === 10) {
+      digits = '91' + digits;
+    }
+    return digits;
+  }
+
+  // Active receipt context for modal WhatsApp button
+  let activeReceiptContext = null;
+
+  // ==================== PAYMENT RECEIPT / INVOICE PRINT ====================
+  function printPaymentReceipt(clientId, paymentId) {
+    const cId = clientId || state.activeClientId;
+    const client = (state.clients || []).find(c => String(c.id) === String(cId));
+    if (!client) {
+      showToast('Client not found', true);
+      return;
+    }
+
+    if (Array.isArray(client.payments)) {
+      client.payments.forEach((p, idx) => {
+        if (!p.id) p.id = 'pay_' + (p.createdAt ? new Date(p.createdAt).getTime() : Date.now()) + '_' + idx;
+      });
+    }
+
+    let payment = (client.payments || []).find(p => String(p.id) === String(paymentId));
+    if (!payment && client.payments && client.payments.length > 0) {
+      payment = client.payments.find((p, idx) => String(idx) === String(paymentId)) || client.payments[client.payments.length - 1];
+    }
+    if (!payment) {
+      showToast('Payment record not found', true);
+      return;
+    }
+
+    activeReceiptContext = { clientId: client.id, paymentId: payment.id };
+
+    const container = document.getElementById('printable-receipt-content');
+    if (!container) return;
+
+    const ledger = calculateClientLedger(client) || { totalBilled: 0, totalPaid: 0, finalBalance: 0 };
+    const hasDiscount = Number(payment.discount || 0) > 0;
+    const paidAmount = Number(payment.amount || 0);
+    const discountAmount = Number(payment.discount || 0);
+    const totalSettled = paidAmount + discountAmount;
+    const receiptNo = payment.reference && payment.reference.trim() !== '--'
+      ? payment.reference.trim()
+      : `REC-${payment.id ? String(payment.id).slice(-6).toUpperCase() : '001'}`;
+
+    const allocationDesc = payment.targetMonth
+      ? `Allocated to Month: ${formatMonthName(payment.targetMonth)}`
+      : 'Automatic Balance Credit (FIFO - Applied towards oldest outstanding month)';
+
+    container.innerHTML = `
+      <div class="space-y-6 text-slate-800">
+        <!-- Top Header & Business Details -->
+        <div class="flex justify-between items-start border-b-2 border-slate-900 pb-5">
+          <div class="space-y-1">
+            <span class="inline-block px-2.5 py-0.5 rounded text-[11px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800">
+              Official Payment Voucher
+            </span>
+            <h1 class="text-2xl font-black text-slate-950 tracking-tight mt-1">${escapeHtml(state.settings.businessName || 'Digital CA Services')}</h1>
+            ${state.settings.businessAddress ? `<p class="text-xs text-slate-600">${escapeHtml(state.settings.businessAddress)}</p>` : ''}
+            <div class="text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-0.5 pt-0.5">
+              ${state.settings.businessPhone ? `<span><strong>Phone:</strong> ${escapeHtml(state.settings.businessPhone)}</span>` : ''}
+              ${state.settings.businessEmail ? `<span><strong>Email:</strong> ${escapeHtml(state.settings.businessEmail)}</span>` : ''}
+            </div>
+          </div>
+          <div class="text-right">
+            <h2 class="text-xl font-extrabold text-slate-900 uppercase tracking-wider">Payment Receipt</h2>
+            <div class="mt-2 text-xs text-slate-600 space-y-1">
+              <p><span class="font-bold text-slate-700">Receipt No:</span> <span class="font-mono font-bold text-slate-900">${escapeHtml(receiptNo)}</span></p>
+              <p><span class="font-bold text-slate-700">Payment Date:</span> ${formatDate(payment.date)}</p>
+              <p><span class="font-bold text-slate-700">Payment Mode:</span> <span class="font-semibold text-slate-900">${escapeHtml(payment.method || 'Cash')}</span></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Client Info & Receipt Summary Box -->
+        <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <div>
+            <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">Received From (Client):</span>
+            <h3 class="text-base font-bold text-slate-900 mt-0.5">${escapeHtml(client.businessName || client.name)}</h3>
+            ${client.businessName && client.name ? `<p class="text-xs text-slate-600 font-medium">Contact Person: ${escapeHtml(client.name)}</p>` : ''}
+            <div class="text-xs text-slate-500 mt-1 space-y-0.5">
+              ${client.phone ? `<p>Phone: ${escapeHtml(client.phone)}</p>` : ''}
+              ${client.email ? `<p>Email: ${escapeHtml(client.email)}</p>` : ''}
+              ${client.gstNumber ? `<p>GSTIN: <span class="font-mono">${escapeHtml(client.gstNumber)}</span></p>` : ''}
+            </div>
+          </div>
+          <div class="text-right flex flex-col justify-center border-l border-slate-200 pl-4">
+            <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">Amount Received:</span>
+            <div class="text-3xl font-black text-emerald-600 tracking-tight mt-0.5">
+              ${formatCurrency(payment.amount)}
+            </div>
+            <p class="text-xs font-semibold text-slate-600 mt-1">
+              Mode: ${escapeHtml(payment.method || 'Cash')}${payment.reference ? ` &bull; Ref: ${escapeHtml(payment.reference)}` : ''}
+            </p>
+          </div>
+        </div>
+
+        <!-- Particulars & Settlement Details Table -->
+        <div class="border border-slate-200 rounded-xl overflow-hidden">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-100 font-bold text-slate-700 uppercase tracking-wider text-[11px] border-b border-slate-200">
+              <tr>
+                <th class="py-2.5 px-4">Description / Particulars</th>
+                <th class="py-2.5 px-4">Allocation Details</th>
+                <th class="py-2.5 px-4 text-right">Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr>
+                <td class="py-3 px-4 font-semibold text-slate-900">
+                  Professional / Accounting Fee Payment
+                  ${payment.note ? `<div class="text-[11px] text-slate-500 font-normal italic mt-0.5">Note: ${escapeHtml(payment.note)}</div>` : ''}
+                </td>
+                <td class="py-3 px-4 text-slate-600">
+                  <span class="inline-block font-medium">${escapeHtml(allocationDesc)}</span>
+                </td>
+                <td class="py-3 px-4 text-right font-bold text-emerald-700 text-sm">
+                  ${formatCurrency(payment.amount)}
+                </td>
+              </tr>
+              ${hasDiscount ? `
+              <tr class="bg-amber-50/50">
+                <td class="py-2.5 px-4 font-medium text-amber-900">
+                  Discount / Fee Waiver
+                  ${payment.discountNote ? `<div class="text-[11px] text-amber-700 font-normal italic">${escapeHtml(payment.discountNote)}</div>` : ''}
+                </td>
+                <td class="py-2.5 px-4 text-amber-800 text-xs">
+                  ${payment.isSettlement ? 'Full Account Settlement Concession' : 'Special Billing Discount'}
+                </td>
+                <td class="py-2.5 px-4 text-right font-bold text-amber-900">
+                  ${formatCurrency(payment.discount)}
+                </td>
+              </tr>
+              ` : ''}
+            </tbody>
+            <tfoot class="bg-slate-50 font-bold border-t border-slate-200 text-xs">
+              ${hasDiscount ? `
+              <tr>
+                <td colspan="2" class="py-2 px-4 text-right uppercase text-slate-600">Total Balance Settled:</td>
+                <td class="py-2 px-4 text-right text-slate-900 font-black">${formatCurrency(totalSettled)}</td>
+              </tr>
+              ` : ''}
+              <tr class="bg-slate-100 text-slate-900">
+                <td colspan="2" class="py-2.5 px-4 text-right uppercase text-[11px] font-black">Net Cash / Bank Paid:</td>
+                <td class="py-2.5 px-4 text-right font-black text-emerald-700 text-base">${formatCurrency(payment.amount)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <!-- Account Standing Snapshot -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs">
+          <div>
+            <span class="text-slate-500">Total Billed to Date:</span> <strong class="text-slate-800">${formatCurrency(ledger.totalBilled)}</strong>
+            <span class="mx-2 text-slate-300">|</span>
+            <span class="text-slate-500">Total Paid to Date:</span> <strong class="text-emerald-700">${formatCurrency(ledger.totalPaid)}</strong>
+          </div>
+          <div class="font-bold">
+            <span class="text-slate-600">Current Outstanding Due:</span>
+            <span class="ml-1 text-sm font-black ${ledger.finalBalance > 0 ? 'text-red-600' : 'text-emerald-700'}">
+              ${formatCurrency(ledger.finalBalance)}
+            </span>
+          </div>
+        </div>
+
+        <!-- Receipt Declaration & Signatures -->
+        <div class="pt-6 border-t border-slate-200 flex justify-between items-end text-xs text-slate-500">
+          <div class="space-y-1">
+            <p class="font-medium text-slate-700">Thank you for your business & prompt payment!</p>
+            <p class="text-[10px] text-slate-400">Subject to realization of payment &bull; Computer-generated receipt</p>
+          </div>
+          <div class="text-center">
+            <div class="w-48 border-b border-slate-400 pb-10"></div>
+            <p class="mt-1 font-bold text-slate-800">Authorized Signatory</p>
+            <p class="text-[10px] text-slate-400">${escapeHtml(state.settings.businessName || '')}</p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    openModal('paymentReceiptModal');
+  }
+
+  // ==================== WHATSAPP PAYMENT MESSAGE ====================
+  function sendPaymentWhatsApp(clientId, paymentId) {
+    const cId = clientId || state.activeClientId;
+    const client = (state.clients || []).find(c => String(c.id) === String(cId));
+    if (!client) {
+      showToast('Client not found', true);
+      return;
+    }
+
+    if (Array.isArray(client.payments)) {
+      client.payments.forEach((p, idx) => {
+        if (!p.id) p.id = 'pay_' + (p.createdAt ? new Date(p.createdAt).getTime() : Date.now()) + '_' + idx;
+      });
+    }
+
+    let payment = (client.payments || []).find(p => String(p.id) === String(paymentId));
+    if (!payment && client.payments && client.payments.length > 0) {
+      payment = client.payments.find((p, idx) => String(idx) === String(paymentId)) || client.payments[client.payments.length - 1];
+    }
+    if (!payment) {
+      showToast('Payment record not found', true);
+      return;
+    }
+
+    activeReceiptContext = { clientId: client.id, paymentId: payment.id };
+
+    const ledger = calculateClientLedger(client) || { totalBilled: 0, totalPaid: 0, finalBalance: 0 };
+    const hasDiscount = Number(payment.discount || 0) > 0;
+    const receiptNo = payment.reference && payment.reference.trim() !== '--'
+      ? payment.reference.trim()
+      : `REC-${payment.id ? String(payment.id).slice(-6).toUpperCase() : '001'}`;
+
+    const allocationDesc = payment.targetMonth
+      ? formatMonthName(payment.targetMonth)
+      : 'General Account Balance (FIFO)';
+
+    const businessTitle = state.settings.businessName || 'Digital CA Services';
+
+    // Construct professional WhatsApp formatted receipt
+    let msg = `🧾 *PAYMENT RECEIPT*\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `*${businessTitle}*\n`;
+    if (state.settings.businessPhone) msg += `📞 Contact: ${state.settings.businessPhone}\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `*Client:* ${client.businessName || client.name}\n`;
+    if (client.businessName && client.name) msg += `*Attn:* ${client.name}\n`;
+    msg += `*Receipt No:* ${receiptNo}\n`;
+    msg += `*Date:* ${formatDate(payment.date)}\n\n`;
+    msg += `*💰 AMOUNT PAID: ${formatCurrency(payment.amount)}*\n`;
+    msg += `*Payment Mode:* ${payment.method || 'Cash'}\n`;
+    msg += `*Allocation:* ${allocationDesc}\n`;
+    if (payment.reference && payment.reference.trim() !== '--') {
+      msg += `*Ref / Txn ID:* ${payment.reference}\n`;
+    }
+    if (hasDiscount) {
+      msg += `*Discount / Waiver:* ${formatCurrency(payment.discount)}\n`;
+      msg += `*Total Settled:* ${formatCurrency(Number(payment.amount) + Number(payment.discount))}\n`;
+    }
+    if (payment.note && payment.note.trim() !== '--') {
+      msg += `*Notes:* ${payment.note}\n`;
+    }
+    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `*Current Outstanding Due:* ${formatCurrency(ledger.finalBalance)}\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `_Thank you for your payment!_\n`;
+    msg += `_${businessTitle}_`;
+
+    let phoneDigits = normalizeWhatsAppPhone(client.phone);
+    if (!phoneDigits) {
+      const entered = prompt(
+        `No phone number found for ${client.name || 'this client'}.\nPlease enter WhatsApp number (10 digits):`,
+        ''
+      );
+      if (entered === null) return; // User cancelled
+      phoneDigits = normalizeWhatsAppPhone(entered);
+      if (phoneDigits) {
+        client.phone = entered.trim();
+        saveData();
+      }
+    }
+
+    const encodedText = encodeURIComponent(msg);
+    const waUrl = phoneDigits
+      ? `https://api.whatsapp.com/send?phone=${phoneDigits}&text=${encodedText}`
+      : `https://api.whatsapp.com/send?text=${encodedText}`;
+
+    // Reliable cross-browser opening to prevent popup blocking
+    const a = document.createElement('a');
+    a.href = waUrl;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => a.remove(), 100);
+
+    showToast(phoneDigits ? `Opening WhatsApp for ${client.name || 'client'}...` : 'Opening WhatsApp with payment receipt...');
+  }
+
+  function sendActiveReceiptWhatsApp() {
+    if (activeReceiptContext && activeReceiptContext.clientId && activeReceiptContext.paymentId) {
+      sendPaymentWhatsApp(activeReceiptContext.clientId, activeReceiptContext.paymentId);
+    } else {
+      showToast('No active receipt found to send', true);
+    }
   }
 
   // ==================== EXPORT & IMPORT ====================
@@ -3440,6 +3788,7 @@ WHERE id = 'main_store';`;
       'overrideMonthModal',
       'editClientModal',
       'printStatementModal',
+      'paymentReceiptModal',
       'editBusinessProfileModal',
       'cloudDatabaseModal',
     ];
@@ -3525,6 +3874,9 @@ WHERE id = 'main_store';`;
     toggleEditSettlementDiscount,
     handleDeletePayment,
     openPrintStatementModal,
+    printPaymentReceipt,
+    sendPaymentWhatsApp,
+    sendActiveReceiptWhatsApp,
     changeCurrency,
     exportJSON,
     importJSON,
