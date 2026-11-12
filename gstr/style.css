@@ -2361,3 +2361,423 @@ body {
 .btn-supabase-status {
   display: none !important;
 }
+
+/* ========================================================
+   VIEW TOGGLE CONTROLS (Cards vs Table)
+   ======================================================== */
+.view-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  background: #f1f5f9;
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.view-toggle-btn {
+  border: none;
+  background: transparent;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 1;
+}
+
+.view-toggle-btn:hover {
+  color: #1e293b;
+}
+
+.view-toggle-btn.active {
+  background: #ffffff;
+  color: #2563eb;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* View Mode Toggling on .table-card */
+.table-card.view-mode-cards .table-responsive,
+.table-card.view-mode-cards .mobile-table-scroll-hint {
+  display: none !important;
+}
+
+.table-card.view-mode-cards .mobile-cards-list {
+  display: grid !important;
+}
+
+.table-card.view-mode-table .table-responsive {
+  display: block !important;
+}
+
+.table-card.view-mode-table .mobile-cards-list {
+  display: none !important;
+}
+
+/* ========================================================
+   MOBILE & TABLET APP-STYLE CARDS
+   ======================================================== */
+.mobile-cards-list {
+  display: none;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+  padding: 14px;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+
+.mobile-shop-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  position: relative;
+}
+
+.mobile-shop-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.07);
+}
+
+.mobile-shop-card.selected {
+  border-color: #3b82f6;
+  background: #f0f7ff;
+}
+
+/* Card Header */
+.m-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.m-card-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.m-card-sno {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 2px 7px;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.m-card-shop-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  line-height: 1.3;
+  cursor: pointer;
+  word-break: break-word;
+}
+
+.m-card-shop-name:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.m-card-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.m-btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.m-btn-icon:hover {
+  background: #f8fafc;
+  color: #2563eb;
+  border-color: #bfdbfe;
+}
+
+.m-btn-icon.m-btn-delete:hover {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+/* Card Credentials */
+.m-card-creds {
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 9px;
+  padding: 9px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.m-cred-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.m-cred-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.m-cred-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.m-cred-val-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.m-cred-val {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-cred-val.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.78rem;
+  letter-spacing: -0.02em;
+}
+
+.btn-copy-pill {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  line-height: 1.3;
+  transition: all 0.15s ease;
+}
+
+.btn-copy-pill:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.m-portal-launch-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border-radius: 7px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.m-portal-launch-btn:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+/* Card Filings (Touch targets 40px+) */
+.m-card-filings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.m-card-filings.m-filings-qrmp {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.m-filing-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.m-filing-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.m-status-btn {
+  min-height: 40px;
+  width: 100%;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.m-slot-compulsory .m-status-btn {
+  border-width: 2px;
+}
+
+/* Card Inputs */
+.m-card-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding-top: 6px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.m-card-inputs.m-inputs-comp {
+  grid-template-columns: 1fr 1fr;
+}
+
+.m-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.m-input-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.m-card-inputs input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font-size: 0.84rem;
+  background: #f8fafc;
+  outline: none;
+  min-height: 38px;
+}
+
+.m-card-inputs input:focus {
+  background: #ffffff;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.m-card-inputs .tax-input-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.m-card-inputs .tax-currency-symbol {
+  position: absolute;
+  left: 9px;
+  color: #64748b;
+  font-weight: 600;
+  font-size: 0.82rem;
+  pointer-events: none;
+}
+
+.m-card-inputs .tax-input-cell input {
+  padding-left: 24px;
+}
+
+/* ========================================================
+   RESPONSIVE LAYOUTS FOR ALL DEVICE SIZES
+   ======================================================== */
+/* Monthly 3-card compliance KPI grid (Clean desktop ratio) */
+#viewMonthly .kpi-grid {
+  grid-template-columns: repeat(3, 1fr) !important;
+}
+
+/* Tablet Layout (641px - 1024px) */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .mobile-cards-list {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    padding: 12px;
+  }
+
+  #viewMonthly .kpi-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 10px;
+  }
+}
+
+/* Mobile Layout (< 640px) */
+@media (max-width: 640px) {
+  .mobile-cards-list {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 10px;
+  }
+
+  #viewMonthly .kpi-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px;
+  }
+
+  .m-cred-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .m-card-inputs {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}

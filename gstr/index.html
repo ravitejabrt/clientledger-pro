@@ -119,7 +119,7 @@
     <main class="main-content">
       <!-- 1. MONTHLY SCHEME VIEW (Attached Screenshot Layout) -->
       <div id="viewMonthly" class="scheme-view active">
-      <!-- KPI Metric Cards Grid -->
+      <!-- KPI Metric Cards Grid (Monthly 3B Compliance) -->
       <section class="kpi-grid">
         <div class="kpi-card card-total">
           <div class="kpi-header">
@@ -128,33 +128,6 @@
           </div>
           <div class="kpi-value" id="kpiTotalClients">63</div>
           <div class="kpi-subtext">Active GSTIN businesses</div>
-        </div>
-
-        <div class="kpi-card card-rent">
-          <div class="kpi-header">
-            <span class="kpi-title">COMMERCIAL RENT</span>
-            <span class="kpi-icon">🏢</span>
-          </div>
-          <div class="kpi-value" id="kpiRentCount">0</div>
-          <div class="kpi-subtext" id="kpiTotalRentAmount">Total Rent: ₹0</div>
-        </div>
-
-        <div class="kpi-card card-itc">
-          <div class="kpi-header">
-            <span class="kpi-title">RENT INPUT (ITC)</span>
-            <span class="kpi-icon">💳</span>
-          </div>
-          <div class="kpi-value" id="kpiItcCount">0</div>
-          <div class="kpi-subtext">Eligible 3B Table 4(A)(5) credit</div>
-        </div>
-
-        <div class="kpi-card card-own">
-          <div class="kpi-header">
-            <span class="kpi-title">OWN PREMISES / NOC</span>
-            <span class="kpi-icon">🏠</span>
-          </div>
-          <div class="kpi-value" id="kpiOwnCount">0</div>
-          <div class="kpi-subtext">Free rent / Family Consent</div>
         </div>
 
         <div class="kpi-card card-gstr1">
@@ -191,18 +164,16 @@
         </div>
 
         <div class="filter-pills">
-          <span class="filter-label">Rent:</span>
-          <button class="pill-btn active" data-rent="ALL">All</button>
-          <button class="pill-btn pill-rent" data-rent="Rent">Rent</button>
-          <button class="pill-btn pill-itc" data-rent="ITC">ITC</button>
-          <button class="pill-btn pill-own" data-rent="Own">Own</button>
-        </div>
-
-        <div class="filter-pills">
           <span class="filter-label">Status:</span>
           <button class="pill-btn active" data-status="ALL">All</button>
           <button class="pill-btn pill-pending" data-status="PENDING">Pending Only</button>
           <button class="pill-btn pill-filed" data-status="FILED">Fully Filed</button>
+        </div>
+
+        <!-- View Switcher (App Cards vs Table) -->
+        <div class="view-toggle-group" id="monthlyViewToggleGroup">
+          <button type="button" class="view-toggle-btn active" data-mode="cards" id="btnMonthlyCards" title="Mobile App Cards View">📱 Cards</button>
+          <button type="button" class="view-toggle-btn" data-mode="table" id="btnMonthlyTable" title="Spreadsheet Table View">📊 Table</button>
         </div>
 
         <div class="gst-portal-link">
@@ -255,6 +226,8 @@
             </tbody>
           </table>
         </div>
+        <!-- Mobile App-Style Cards List (Visible on Mobile & Tablet) -->
+        <div id="monthlyCardsContainer" class="mobile-cards-list"></div>
         <div id="noResults" class="no-results" style="display: none;">
           <p>No shops match your current search or filter criteria.</p>
         </div>
@@ -355,6 +328,12 @@
             <button class="pill-btn pill-filed" data-qrmp-status="FILED">Fully Filed</button>
           </div>
 
+          <!-- View Switcher (App Cards vs Table) -->
+          <div class="view-toggle-group" id="qrmpViewToggleGroup">
+            <button type="button" class="view-toggle-btn active" data-mode="cards" id="btnQrmpCards" title="Mobile App Cards View">📱 Cards</button>
+            <button type="button" class="view-toggle-btn" data-mode="table" id="btnQrmpTable" title="Spreadsheet Table View">📊 Table</button>
+          </div>
+
           <div class="gst-portal-link">
             <a href="https://services.gst.gov.in/services/login" target="_blank" rel="noopener" class="portal-btn">
               <span>GST Portal Login</span>
@@ -394,6 +373,8 @@
               </tbody>
             </table>
           </div>
+          <!-- Mobile App-Style Cards List (Visible on Mobile & Tablet) -->
+          <div id="qrmpCardsContainer" class="mobile-cards-list"></div>
           <div id="qrmpNoResults" class="no-results" style="display: none;">
             <p>No QRMP shops match your search.</p>
           </div>
@@ -475,6 +456,12 @@
             <button class="pill-btn pill-filed" data-comp-status="FILED">Fully Filed</button>
           </div>
 
+          <!-- View Switcher (App Cards vs Table) -->
+          <div class="view-toggle-group" id="compViewToggleGroup">
+            <button type="button" class="view-toggle-btn active" data-mode="cards" id="btnCompCards" title="Mobile App Cards View">📱 Cards</button>
+            <button type="button" class="view-toggle-btn" data-mode="table" id="btnCompTable" title="Spreadsheet Table View">📊 Table</button>
+          </div>
+
           <div class="gst-portal-link">
             <a href="https://services.gst.gov.in/services/login" target="_blank" rel="noopener" class="portal-btn">
               <span>GST Portal Login</span>
@@ -514,6 +501,8 @@
               </tbody>
             </table>
           </div>
+          <!-- Mobile App-Style Cards List (Visible on Mobile & Tablet) -->
+          <div id="compCardsContainer" class="mobile-cards-list"></div>
           <div id="compNoResults" class="no-results" style="display: none;">
             <p>No Composition shops match your search.</p>
           </div>

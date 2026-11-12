@@ -59,12 +59,15 @@
 
   // Monthly DOM Elements
   const tableBody = document.getElementById('tableBody');
+  const monthlyCardsContainer = document.getElementById('monthlyCardsContainer');
   const noResults = document.getElementById('noResults');
   const searchInput = document.getElementById('searchInput');
   const btnClearSearch = document.getElementById('btnClearSearch');
   const selectAllCheckbox = document.getElementById('selectAllCheckbox');
   const bulkActionsBar = document.getElementById('bulkActionsBar');
   const bulkSelectedCount = document.getElementById('bulkSelectedCount');
+  const btnMonthlyCards = document.getElementById('btnMonthlyCards');
+  const btnMonthlyTable = document.getElementById('btnMonthlyTable');
 
   // Monthly KPI Elements
   const kpiTotalClients = document.getElementById('kpiTotalClients');
@@ -81,10 +84,13 @@
 
   // QRMP DOM Elements
   const qrmpTableBody = document.getElementById('qrmpTableBody');
+  const qrmpCardsContainer = document.getElementById('qrmpCardsContainer');
   const qrmpNoResults = document.getElementById('qrmpNoResults');
   const qrmpSearchInput = document.getElementById('qrmpSearchInput');
   const btnQrmpClearSearch = document.getElementById('btnQrmpClearSearch');
   const qrmpSelectAllCheckbox = document.getElementById('qrmpSelectAllCheckbox');
+  const btnQrmpCards = document.getElementById('btnQrmpCards');
+  const btnQrmpTable = document.getElementById('btnQrmpTable');
   const thQrmpM1 = document.getElementById('thQrmpM1');
   const thQrmpM2 = document.getElementById('thQrmpM2');
   const thQrmpM3 = document.getElementById('thQrmpM3');
@@ -109,10 +115,13 @@
 
   // Composition DOM Elements
   const compTableBody = document.getElementById('compTableBody');
+  const compCardsContainer = document.getElementById('compCardsContainer');
   const compNoResults = document.getElementById('compNoResults');
   const compSearchInput = document.getElementById('compSearchInput');
   const btnCompClearSearch = document.getElementById('btnCompClearSearch');
   const compSelectAllCheckbox = document.getElementById('compSelectAllCheckbox');
+  const btnCompCards = document.getElementById('btnCompCards');
+  const btnCompTable = document.getElementById('btnCompTable');
   const kpiCompTotal = document.getElementById('kpiCompTotal');
   const kpiComp08Filed = document.getElementById('kpiComp08Filed');
   const kpiComp08Due = document.getElementById('kpiComp08Due');
@@ -131,6 +140,55 @@
   const modalFilingDate = document.getElementById('modalFilingDate');
   const modalBookmarklet = document.getElementById('modalBookmarklet');
   const toast = document.getElementById('toast');
+
+  // --- VIEW MODE STATE (Cards vs Table) ---
+  // Default to cards on mobile & tablet devices (<= 900px), or recall user preference
+  const isMobileOrTablet = window.innerWidth <= 900;
+  let monthlyViewMode = localStorage.getItem('gstr_monthly_view') || (isMobileOrTablet ? 'cards' : 'table');
+  let qrmpViewMode = localStorage.getItem('gstr_qrmp_view') || (isMobileOrTablet ? 'cards' : 'table');
+  let compViewMode = localStorage.getItem('gstr_comp_view') || (isMobileOrTablet ? 'cards' : 'table');
+
+  function setMonthlyViewMode(mode) {
+    monthlyViewMode = mode;
+    try { localStorage.setItem('gstr_monthly_view', mode); } catch (_) {}
+    if (btnMonthlyCards && btnMonthlyTable) {
+      btnMonthlyCards.classList.toggle('active', mode === 'cards');
+      btnMonthlyTable.classList.toggle('active', mode === 'table');
+    }
+    const tableCard = viewMonthly ? viewMonthly.querySelector('.table-card') : null;
+    if (tableCard) {
+      tableCard.classList.remove('view-mode-cards', 'view-mode-table');
+      tableCard.classList.add(mode === 'cards' ? 'view-mode-cards' : 'view-mode-table');
+    }
+  }
+
+  function setQrmpViewMode(mode) {
+    qrmpViewMode = mode;
+    try { localStorage.setItem('gstr_qrmp_view', mode); } catch (_) {}
+    if (btnQrmpCards && btnQrmpTable) {
+      btnQrmpCards.classList.toggle('active', mode === 'cards');
+      btnQrmpTable.classList.toggle('active', mode === 'table');
+    }
+    const tableCard = viewQrmp ? viewQrmp.querySelector('.table-card') : null;
+    if (tableCard) {
+      tableCard.classList.remove('view-mode-cards', 'view-mode-table');
+      tableCard.classList.add(mode === 'cards' ? 'view-mode-cards' : 'view-mode-table');
+    }
+  }
+
+  function setCompViewMode(mode) {
+    compViewMode = mode;
+    try { localStorage.setItem('gstr_comp_view', mode); } catch (_) {}
+    if (btnCompCards && btnCompTable) {
+      btnCompCards.classList.toggle('active', mode === 'cards');
+      btnCompTable.classList.toggle('active', mode === 'table');
+    }
+    const tableCard = viewComposition ? viewComposition.querySelector('.table-card') : null;
+    if (tableCard) {
+      tableCard.classList.remove('view-mode-cards', 'view-mode-table');
+      tableCard.classList.add(mode === 'cards' ? 'view-mode-cards' : 'view-mode-table');
+    }
+  }
 
   // Today's ISO date string (YYYY-MM-DD)
   function getTodayDateString() {
@@ -203,6 +261,11 @@
   // --- INITIALIZATION ---
   async function init() {
     setupEventListeners();
+
+    // Initialize view modes (cards for mobile/tablet, table for desktop)
+    setMonthlyViewMode(monthlyViewMode);
+    setQrmpViewMode(qrmpViewMode);
+    setCompViewMode(compViewMode);
 
     // Listen for realtime cloud updates from Supabase (phone/tablet sync)
     if (window.BRT_SUPABASE) {
@@ -633,16 +696,18 @@
       if (f.gstr3b === 'Filed') g3b++;
     });
 
-    kpiTotalClients.textContent = total;
-    kpiRentCount.textContent = rent;
-    kpiTotalRentAmount.textContent = totalRentAmount > 0 
-      ? `Total Rent: ₹${totalRentAmount.toLocaleString('en-IN')}`
-      : 'Total Rent: ₹0';
-    kpiItcCount.textContent = itc;
-    kpiOwnCount.textContent = own;
+    if (kpiTotalClients) kpiTotalClients.textContent = total;
+    if (kpiRentCount) kpiRentCount.textContent = rent;
+    if (kpiTotalRentAmount) {
+      kpiTotalRentAmount.textContent = totalRentAmount > 0 
+        ? `Total Rent: ₹${totalRentAmount.toLocaleString('en-IN')}`
+        : 'Total Rent: ₹0';
+    }
+    if (kpiItcCount) kpiItcCount.textContent = itc;
+    if (kpiOwnCount) kpiOwnCount.textContent = own;
 
-    kpiG1Filed.textContent = `${g1} / ${total}`;
-    kpiG3bFiled.textContent = `${g3b} / ${total}`;
+    if (kpiG1Filed) kpiG1Filed.textContent = `${g1} / ${total}`;
+    if (kpiG3bFiled) kpiG3bFiled.textContent = `${g3b} / ${total}`;
 
     const g1Pct = total > 0 ? Math.round((g1 / total) * 100) : 0;
     const g3bPct = total > 0 ? Math.round((g3b / total) * 100) : 0;
@@ -688,8 +753,115 @@
     renderTable();
   }
 
+  function renderMonthlyCardHtml(item) {
+    const isG1Filed = item.gstr1 === 'Filed';
+    const isG3bFiled = item.gstr3b === 'Filed';
+
+    return `
+      <div class="mobile-shop-card ${selectedIds.has(item.id) ? 'selected' : ''}" data-id="${item.id}">
+        <div class="m-card-header">
+          <div class="m-card-title-wrap">
+            <span class="m-card-sno">#${item.sno}</span>
+            <h4 class="m-card-shop-name" data-action="editShopName" data-id="${item.id}" title="Tap to edit details">
+              ${escapeHtml(item.name)}
+            </h4>
+          </div>
+          <div class="m-card-top-actions">
+            <button class="m-btn-icon" data-action="editShopName" data-id="${item.id}" title="Edit Shop Details">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="m-btn-icon m-btn-delete" data-action="deleteShop" data-id="${item.id}" data-name="${escapeHtml(item.name)}" title="Delete Shop">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="m-card-creds">
+          <div class="m-cred-row">
+            <div class="m-cred-item">
+              <span class="m-cred-label">USER</span>
+              <div class="m-cred-val-wrap">
+                <span class="m-cred-val">${escapeHtml(item.user || '-')}</span>
+                ${item.user ? `<button class="btn-copy-pill" data-copy="${escapeHtml(item.user)}" title="Copy User Name"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>` : ''}
+              </div>
+            </div>
+            <div class="m-cred-item">
+              <span class="m-cred-label">GSTIN</span>
+              <div class="m-cred-val-wrap">
+                <span class="m-cred-val font-mono">${escapeHtml(item.gst || '-')}</span>
+                ${item.gst ? `<button class="btn-copy-pill" data-copy="${escapeHtml(item.gst)}" title="Copy GSTIN"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>` : ''}
+              </div>
+            </div>
+          </div>
+          ${item.user ? `
+            <button class="m-portal-launch-btn" data-action="openGstLogin" data-user="${escapeHtml(item.user)}" data-name="${escapeHtml(item.name)}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              <span>GST Portal Login · Copies "${escapeHtml(item.user)}"</span>
+            </button>
+          ` : ''}
+        </div>
+
+        <div class="m-card-filings">
+          <div class="m-filing-slot">
+            <div class="m-filing-label">GSTR-1</div>
+            <button class="status-btn m-status-btn status-${item.gstr1}" data-action="clickG1" data-id="${item.id}" title="${isG1Filed ? 'Click to edit filing date or revert' : 'Click to enter filing date and mark Filed'}">
+              <span>${isG1Filed ? '✓ Filed' : 'Pending'}</span>
+            </button>
+            ${isG1Filed && item.gstr1Date ? `<span class="filing-date-subtext">📅 ${escapeHtml(item.gstr1Date)}</span>` : ''}
+            ${item.gstr1Arn ? `<span class="arn-tag">ARN: ${escapeHtml(item.gstr1Arn)}</span>` : ''}
+          </div>
+
+          <div class="m-filing-slot">
+            <div class="m-filing-label">GSTR-3B</div>
+            ${isG1Filed ? `
+              <button class="status-btn m-status-btn status-${item.gstr3b}" data-action="clickG3b" data-id="${item.id}" title="${isG3bFiled ? 'Click to edit filing date or revert' : 'Click to enter filing date and mark Filed'}">
+                <span>${isG3bFiled ? '✓ Filed' : 'Pending'}</span>
+              </button>
+              ${isG3bFiled && item.gstr3bDate ? `<span class="filing-date-subtext">📅 ${escapeHtml(item.gstr3bDate)}</span>` : ''}
+              ${item.gstr3bArn ? `<span class="arn-tag">ARN: ${escapeHtml(item.gstr3bArn)}</span>` : ''}
+            ` : `
+              <button class="status-btn m-status-btn status-locked" data-action="lockedG3b" data-id="${item.id}" title="Cannot file GSTR-3B: GSTR-1 must be filed first!">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span>Pending</span>
+              </button>
+              <span class="lock-hint-badge">G1 Required</span>
+            `}
+          </div>
+        </div>
+
+        <div class="m-card-inputs">
+          <div class="m-input-group">
+            <label class="m-input-label">Taxable Amount (₹)</label>
+            <div class="tax-input-cell">
+              <span class="tax-currency-symbol">₹</span>
+              <input type="text" 
+                     class="taxable-amount-input" 
+                     data-id="${item.id}" 
+                     value="${escapeHtml(item.taxableAmount || '')}" 
+                     placeholder="0" 
+                     inputmode="numeric" 
+                     pattern="[0-9]*" 
+                     autocomplete="off"
+                     title="Enter Taxable Amount">
+            </div>
+          </div>
+          <div class="m-input-group">
+            <label class="m-input-label">Remarks</label>
+            <input type="text" 
+                   class="remarks-input" 
+                   data-id="${item.id}" 
+                   value="${escapeHtml(item.remarks || '')}" 
+                   placeholder="Add notes...">
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function renderTable() {
     tableBody.innerHTML = '';
+    if (monthlyCardsContainer) monthlyCardsContainer.innerHTML = '';
+
     if (filteredFilings.length === 0) {
       noResults.style.display = 'block';
       selectAllCheckbox.checked = false;
@@ -697,6 +869,7 @@
     }
     noResults.style.display = 'none';
 
+    let cardsHtml = '';
     filteredFilings.forEach(item => {
       const tr = document.createElement('tr');
       if (selectedIds.has(item.id)) tr.classList.add('selected');
@@ -800,7 +973,12 @@
       `;
 
       tableBody.appendChild(tr);
+      cardsHtml += renderMonthlyCardHtml(item);
     });
+
+    if (monthlyCardsContainer) {
+      monthlyCardsContainer.innerHTML = cardsHtml;
+    }
 
     updateSelectAllCheckbox();
   }
@@ -941,8 +1119,134 @@
     renderQrmpTable();
   }
 
+  function renderQrmpCardHtml(item) {
+    const isM1Filed = item.m1Gstr1 === 'Filed';
+    const isM2Filed = item.m2Gstr1 === 'Filed';
+    const isM3Filed = item.m3Gstr1 === 'Filed';
+    const isG3bFiled = item.gstr3b === 'Filed';
+
+    return `
+      <div class="mobile-shop-card ${qrmpSelectedIds.has(item.id) ? 'selected' : ''}" data-id="${item.id}">
+        <div class="m-card-header">
+          <div class="m-card-title-wrap">
+            <span class="m-card-sno">#${item.sno}</span>
+            <h4 class="m-card-shop-name" data-action="editQrmpShop" data-id="${item.id}" title="Tap to edit QRMP Company">
+              ${escapeHtml(item.name)}
+            </h4>
+          </div>
+          <div class="m-card-top-actions">
+            <span class="rent-badge rent-badge-${item.rent || 'Rent'}" data-action="editQrmpShop" data-id="${item.id}">
+              ${escapeHtml(item.rent || 'Rent')}
+              ${item.rent === 'Rent' && item.rentAmount ? ` · ₹${escapeHtml(formatNumber(item.rentAmount))}` : ''}
+            </span>
+            <button class="m-btn-icon" data-action="editQrmpShop" data-id="${item.id}" title="Edit QRMP Company">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="m-btn-icon m-btn-delete" data-action="deleteQrmpShop" data-id="${item.id}" data-name="${escapeHtml(item.name)}" title="Delete QRMP Company">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="m-card-creds">
+          <div class="m-cred-row">
+            <div class="m-cred-item">
+              <span class="m-cred-label">USER</span>
+              <div class="m-cred-val-wrap">
+                <span class="m-cred-val">${escapeHtml(item.user || '-')}</span>
+                ${item.user ? `<button class="btn-copy-pill" data-copy="${escapeHtml(item.user)}" title="Copy User Name"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>` : ''}
+              </div>
+            </div>
+            <div class="m-cred-item">
+              <span class="m-cred-label">GSTIN</span>
+              <div class="m-cred-val-wrap">
+                <span class="m-cred-val font-mono">${escapeHtml(item.gst || '-')}</span>
+                ${item.gst ? `<button class="btn-copy-pill" data-copy="${escapeHtml(item.gst)}" title="Copy GSTIN"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>` : ''}
+              </div>
+            </div>
+          </div>
+          ${item.user ? `
+            <button class="m-portal-launch-btn" data-action="openGstLogin" data-user="${escapeHtml(item.user)}" data-name="${escapeHtml(item.name)}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              <span>GST Portal Login · Copies "${escapeHtml(item.user)}"</span>
+            </button>
+          ` : ''}
+        </div>
+
+        <div class="m-card-filings m-filings-qrmp">
+          <div class="m-filing-slot">
+            <div class="m-filing-label">M1 G1 (IFF)</div>
+            <button class="status-btn m-status-btn status-${item.m1Gstr1}" data-action="clickQrmpM1" data-id="${item.id}">
+              <span>${isM1Filed ? '✓ Filed' : 'Pending'}</span>
+            </button>
+            ${isM1Filed && item.m1Gstr1Date ? `<span class="filing-date-subtext">📅 ${escapeHtml(item.m1Gstr1Date)}</span>` : ''}
+          </div>
+
+          <div class="m-filing-slot">
+            <div class="m-filing-label">M2 G1 (IFF)</div>
+            <button class="status-btn m-status-btn status-${item.m2Gstr1}" data-action="clickQrmpM2" data-id="${item.id}">
+              <span>${isM2Filed ? '✓ Filed' : 'Pending'}</span>
+            </button>
+            ${isM2Filed && item.m2Gstr1Date ? `<span class="filing-date-subtext">📅 ${escapeHtml(item.m2Gstr1Date)}</span>` : ''}
+          </div>
+
+          <div class="m-filing-slot m-slot-compulsory">
+            <div class="m-filing-label text-amber-700 font-bold">★ M3 G1 (REQ)</div>
+            <button class="status-btn m-status-btn status-${item.m3Gstr1}" data-action="clickQrmpM3" data-id="${item.id}" style="${isM3Filed ? '' : 'border-color: #f59e0b; color: #b45309;'}">
+              <span>${isM3Filed ? '✓ Filed' : 'Pending'}</span>
+            </button>
+            ${isM3Filed && item.m3Gstr1Date ? `<span class="filing-date-subtext">📅 ${escapeHtml(item.m3Gstr1Date)}</span>` : ''}
+          </div>
+
+          <div class="m-filing-slot">
+            <div class="m-filing-label">GSTR-3B (Quarterly)</div>
+            ${isM3Filed ? `
+              <button class="status-btn m-status-btn status-${item.gstr3b}" data-action="clickQrmpG3b" data-id="${item.id}">
+                <span>${isG3bFiled ? '✓ Filed' : 'Pending'}</span>
+              </button>
+              ${isG3bFiled && item.gstr3bDate ? `<span class="filing-date-subtext">📅 ${escapeHtml(item.gstr3bDate)}</span>` : ''}
+            ` : `
+              <button class="status-btn m-status-btn status-locked" data-action="lockedQrmpG3b" data-id="${item.id}">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span>Pending</span>
+              </button>
+              <span class="lock-hint-badge">M3 Required</span>
+            `}
+          </div>
+        </div>
+
+        <div class="m-card-inputs">
+          <div class="m-input-group">
+            <label class="m-input-label">Taxable Amount (₹)</label>
+            <div class="tax-input-cell">
+              <span class="tax-currency-symbol">₹</span>
+              <input type="text" 
+                     class="qrmp-taxable-amount-input" 
+                     data-id="${item.id}" 
+                     value="${escapeHtml(item.taxableAmount || '')}" 
+                     placeholder="0" 
+                     inputmode="numeric" 
+                     pattern="[0-9]*" 
+                     autocomplete="off">
+            </div>
+          </div>
+          <div class="m-input-group">
+            <label class="m-input-label">Remarks</label>
+            <input type="text" 
+                   class="qrmp-remarks-input" 
+                   data-id="${item.id}" 
+                   value="${escapeHtml(item.remarks || '')}" 
+                   placeholder="Add notes...">
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function renderQrmpTable() {
     qrmpTableBody.innerHTML = '';
+    if (qrmpCardsContainer) qrmpCardsContainer.innerHTML = '';
+
     if (filteredQrmpFilings.length === 0) {
       qrmpNoResults.style.display = 'block';
       qrmpSelectAllCheckbox.checked = false;
@@ -950,6 +1254,7 @@
     }
     qrmpNoResults.style.display = 'none';
 
+    let cardsHtml = '';
     filteredQrmpFilings.forEach(item => {
       const tr = document.createElement('tr');
       if (qrmpSelectedIds.has(item.id)) tr.classList.add('selected');
@@ -1088,7 +1393,12 @@
       `;
 
       qrmpTableBody.appendChild(tr);
+      cardsHtml += renderQrmpCardHtml(item);
     });
+
+    if (qrmpCardsContainer) {
+      qrmpCardsContainer.innerHTML = cardsHtml;
+    }
   }
 
   async function deleteQrmpShop(clientId, shopName) {
@@ -1219,8 +1529,119 @@
     renderCompositionTable();
   }
 
+  function renderCompCardHtml(item) {
+    const isCmp08Filed = item.cmp08 === 'Filed';
+    const isG4Filed = item.gstr4 === 'Filed';
+
+    return `
+      <div class="mobile-shop-card ${compositionSelectedIds.has(item.id) ? 'selected' : ''}" data-id="${item.id}">
+        <div class="m-card-header">
+          <div class="m-card-title-wrap">
+            <span class="m-card-sno">#${item.sno}</span>
+            <h4 class="m-card-shop-name" data-action="editCompShop" data-id="${item.id}" title="Tap to edit Composition Shop">
+              ${escapeHtml(item.name)}
+            </h4>
+          </div>
+          <div class="m-card-top-actions">
+            <span class="category-badge">${escapeHtml(item.category || 'Trader')} (${escapeHtml(item.taxRate || '1%')})</span>
+            <button class="m-btn-icon" data-action="editCompShop" data-id="${item.id}" title="Edit Composition Shop">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="m-btn-icon m-btn-delete" data-action="deleteCompShop" data-id="${item.id}" data-name="${escapeHtml(item.name)}" title="Delete Composition Shop">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="m-card-creds">
+          <div class="m-cred-row">
+            <div class="m-cred-item">
+              <span class="m-cred-label">USER</span>
+              <div class="m-cred-val-wrap">
+                <span class="m-cred-val">${escapeHtml(item.user || '-')}</span>
+                ${item.user ? `<button class="btn-copy-pill" data-copy="${escapeHtml(item.user)}" title="Copy User Name"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>` : ''}
+              </div>
+            </div>
+            <div class="m-cred-item">
+              <span class="m-cred-label">GSTIN</span>
+              <div class="m-cred-val-wrap">
+                <span class="m-cred-val font-mono">${escapeHtml(item.gst || '-')}</span>
+                ${item.gst ? `<button class="btn-copy-pill" data-copy="${escapeHtml(item.gst)}" title="Copy GSTIN"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>` : ''}
+              </div>
+            </div>
+          </div>
+          ${item.user ? `
+            <button class="m-portal-launch-btn" data-action="openGstLogin" data-user="${escapeHtml(item.user)}" data-name="${escapeHtml(item.name)}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              <span>GST Portal Login · Copies "${escapeHtml(item.user)}"</span>
+            </button>
+          ` : ''}
+        </div>
+
+        <div class="m-card-filings">
+          <div class="m-filing-slot">
+            <div class="m-filing-label">CMP-08 (Quarterly)</div>
+            <button class="status-btn m-status-btn status-${item.cmp08}" data-action="clickCmp08" data-id="${item.id}">
+              <span>${isCmp08Filed ? '✓ Filed' : 'Pending'}</span>
+            </button>
+            ${isCmp08Filed && item.cmp08Date ? `<span class="filing-date-subtext">📅 ${escapeHtml(item.cmp08Date)}</span>` : ''}
+          </div>
+
+          <div class="m-filing-slot">
+            <div class="m-filing-label">GSTR-4 (Annual)</div>
+            <button class="status-btn m-status-btn status-${item.gstr4}" data-action="clickGstr4" data-id="${item.id}">
+              <span>${isG4Filed ? '✓ Filed' : 'Pending'}</span>
+            </button>
+            ${isG4Filed && item.gstr4Date ? `<span class="filing-date-subtext">📅 ${escapeHtml(item.gstr4Date)}</span>` : ''}
+          </div>
+        </div>
+
+        <div class="m-card-inputs m-inputs-comp">
+          <div class="m-input-group">
+            <label class="m-input-label">Taxable Turnover (₹)</label>
+            <div class="tax-input-cell">
+              <span class="tax-currency-symbol">₹</span>
+              <input type="text" 
+                     class="comp-turnover-input" 
+                     data-id="${item.id}" 
+                     value="${escapeHtml(item.taxableTurnover || '')}" 
+                     placeholder="0" 
+                     inputmode="numeric" 
+                     pattern="[0-9]*" 
+                     autocomplete="off">
+            </div>
+          </div>
+          <div class="m-input-group">
+            <label class="m-input-label">Tax Amount (₹)</label>
+            <div class="tax-input-cell">
+              <span class="tax-currency-symbol">₹</span>
+              <input type="text" 
+                     class="comp-tax-input" 
+                     data-id="${item.id}" 
+                     value="${escapeHtml(item.taxAmount || '')}" 
+                     placeholder="0" 
+                     inputmode="numeric" 
+                     pattern="[0-9]*" 
+                     autocomplete="off">
+            </div>
+          </div>
+          <div class="m-input-group" style="grid-column: 1 / -1;">
+            <label class="m-input-label">Remarks</label>
+            <input type="text" 
+                   class="comp-remarks-input" 
+                   data-id="${item.id}" 
+                   value="${escapeHtml(item.remarks || '')}" 
+                   placeholder="Add notes...">
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function renderCompositionTable() {
     compTableBody.innerHTML = '';
+    if (compCardsContainer) compCardsContainer.innerHTML = '';
+
     if (filteredCompositionFilings.length === 0) {
       compNoResults.style.display = 'block';
       compSelectAllCheckbox.checked = false;
@@ -1228,6 +1649,7 @@
     }
     compNoResults.style.display = 'none';
 
+    let cardsHtml = '';
     filteredCompositionFilings.forEach(item => {
       const tr = document.createElement('tr');
       if (compositionSelectedIds.has(item.id)) tr.classList.add('selected');
@@ -1348,7 +1770,12 @@
       `;
 
       compTableBody.appendChild(tr);
+      cardsHtml += renderCompCardHtml(item);
     });
+
+    if (compCardsContainer) {
+      compCardsContainer.innerHTML = cardsHtml;
+    }
   }
 
   async function deleteCompositionShop(clientId, shopName) {
@@ -1716,122 +2143,139 @@
     });
 
     // ==========================================
-    // MONTHLY TABLE EVENTS
+    // VIEW SWITCHER CONTROLS (Cards vs Table)
     // ==========================================
-    tableBody.addEventListener('change', async (e) => {
-      if (e.target.classList.contains('row-checkbox')) {
-        const id = e.target.getAttribute('data-id');
-        if (e.target.checked) selectedIds.add(id);
-        else selectedIds.delete(id);
-        e.target.closest('tr').classList.toggle('selected', e.target.checked);
-        updateBulkBar();
-        updateSelectAllCheckbox();
-      }
+    if (btnMonthlyCards) btnMonthlyCards.addEventListener('click', () => setMonthlyViewMode('cards'));
+    if (btnMonthlyTable) btnMonthlyTable.addEventListener('click', () => setMonthlyViewMode('table'));
+    if (btnQrmpCards) btnQrmpCards.addEventListener('click', () => setQrmpViewMode('cards'));
+    if (btnQrmpTable) btnQrmpTable.addEventListener('click', () => setQrmpViewMode('table'));
+    if (btnCompCards) btnCompCards.addEventListener('click', () => setCompViewMode('cards'));
+    if (btnCompTable) btnCompTable.addEventListener('click', () => setCompViewMode('table'));
 
-      if (e.target.classList.contains('remarks-input')) {
-        const clientId = e.target.getAttribute('data-id');
-        const newRemarks = e.target.value.trim();
-        await updateFiling(clientId, { remarks: newRemarks });
-        showToast('Remarks saved');
-      }
+    // ==========================================
+    // MONTHLY TABLE & CARDS EVENTS
+    // ==========================================
+    [tableBody, monthlyCardsContainer].forEach(container => {
+      if (!container) return;
 
-      if (e.target.classList.contains('taxable-amount-input')) {
-        const clientId = e.target.getAttribute('data-id');
-        const cleanVal = e.target.value.replace(/[^0-9]/g, '');
-        e.target.value = cleanVal;
-        await updateFiling(clientId, { taxableAmount: cleanVal });
-        showToast('Taxable amount saved');
-      }
-    });
-
-    tableBody.addEventListener('keydown', (e) => {
-      if (e.target.classList.contains('taxable-amount-input')) {
-        if (['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
-        if (e.key === 'Enter') { e.target.blur(); return; }
-        if (e.ctrlKey || e.metaKey) return;
-        if (!/^[0-9]$/.test(e.key)) e.preventDefault();
-      }
-    });
-
-    tableBody.addEventListener('input', (e) => {
-      if (e.target.classList.contains('taxable-amount-input')) {
-        const val = e.target.value;
-        const clean = val.replace(/[^0-9]/g, '');
-        if (val !== clean) e.target.value = clean;
-      }
-    });
-
-    tableBody.addEventListener('paste', (e) => {
-      if (e.target.classList.contains('taxable-amount-input')) {
-        e.preventDefault();
-        const text = (e.clipboardData || window.clipboardData).getData('text') || '';
-        const clean = text.replace(/[^0-9]/g, '');
-        document.execCommand('insertText', false, clean);
-      }
-    });
-
-    tableBody.addEventListener('click', async (e) => {
-      const gstLoginBtn = e.target.closest('[data-action="openGstLogin"]');
-      if (gstLoginBtn) {
-        const userName = gstLoginBtn.getAttribute('data-user');
-        if (userName) {
-          navigator.clipboard.writeText(userName).then(() => {
-            showToast(`📋 Copied username "${userName}"! Press Ctrl+V in the Username box on GST Portal.`);
-          }).catch(() => {
-            showToast(`Opening GST Portal for ${userName}...`);
-          });
+      container.addEventListener('change', async (e) => {
+        if (e.target.classList.contains('row-checkbox')) {
+          const id = e.target.getAttribute('data-id');
+          if (e.target.checked) selectedIds.add(id);
+          else selectedIds.delete(id);
+          const tr = e.target.closest('tr');
+          if (tr) tr.classList.toggle('selected', e.target.checked);
+          const card = e.target.closest('.mobile-shop-card');
+          if (card) card.classList.toggle('selected', e.target.checked);
+          updateBulkBar();
+          updateSelectAllCheckbox();
         }
-        window.open('https://services.gst.gov.in/services/login', '_blank');
-        return;
-      }
 
-      const copyBtn = e.target.closest('[data-copy]');
-      if (copyBtn) {
-        const text = copyBtn.getAttribute('data-copy');
-        navigator.clipboard.writeText(text);
-        showToast(`Copied "${text}" to clipboard!`);
-        return;
-      }
-
-      const g1Btn = e.target.closest('[data-action="clickG1"]');
-      if (g1Btn) {
-        const clientId = g1Btn.getAttribute('data-id');
-        openDateModal(clientId, 'gstr1', 'monthly');
-        return;
-      }
-
-      const g3bBtn = e.target.closest('[data-action="clickG3b"]');
-      if (g3bBtn) {
-        const clientId = g3bBtn.getAttribute('data-id');
-        openDateModal(clientId, 'gstr3b', 'monthly');
-        return;
-      }
-
-      const lockedBtn = e.target.closest('[data-action="lockedG3b"]');
-      if (lockedBtn) {
-        const clientId = lockedBtn.getAttribute('data-id');
-        const item = allFilings.find(f => f.id === clientId);
-        const name = item ? item.name : 'this shop';
-        showToast(`⚠️ GSTR-1 must be filed before you can file GSTR-3B for ${name}!`);
-        return;
-      }
-
-      const editNameBtn = e.target.closest('[data-action="editShopName"]');
-      if (editNameBtn) {
-        const clientId = editNameBtn.getAttribute('data-id');
-        openEditShopNameModal(clientId, 'monthly');
-        return;
-      }
-
-      const deleteShopBtn = e.target.closest('[data-action="deleteShop"]');
-      if (deleteShopBtn) {
-        const clientId = deleteShopBtn.getAttribute('data-id');
-        const shopName = deleteShopBtn.getAttribute('data-name') || 'this shop';
-        if (confirm(`Are you sure you want to delete "${shopName}"?\n\nThis will remove the shop and all its return filing records across all months.`)) {
-          await deleteShop(clientId, shopName);
+        if (e.target.classList.contains('remarks-input')) {
+          const clientId = e.target.getAttribute('data-id');
+          const newRemarks = e.target.value.trim();
+          await updateFiling(clientId, { remarks: newRemarks });
+          showToast('Remarks saved');
         }
-        return;
-      }
+
+        if (e.target.classList.contains('taxable-amount-input')) {
+          const clientId = e.target.getAttribute('data-id');
+          const cleanVal = e.target.value.replace(/[^0-9]/g, '');
+          e.target.value = cleanVal;
+          await updateFiling(clientId, { taxableAmount: cleanVal });
+          showToast('Taxable amount saved');
+        }
+      });
+
+      container.addEventListener('keydown', (e) => {
+        if (e.target.classList.contains('taxable-amount-input')) {
+          if (['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+          if (e.key === 'Enter') { e.target.blur(); return; }
+          if (e.ctrlKey || e.metaKey) return;
+          if (!/^[0-9]$/.test(e.key)) e.preventDefault();
+        }
+      });
+
+      container.addEventListener('input', (e) => {
+        if (e.target.classList.contains('taxable-amount-input')) {
+          const val = e.target.value;
+          const clean = val.replace(/[^0-9]/g, '');
+          if (val !== clean) e.target.value = clean;
+        }
+      });
+
+      container.addEventListener('paste', (e) => {
+        if (e.target.classList.contains('taxable-amount-input')) {
+          e.preventDefault();
+          const text = (e.clipboardData || window.clipboardData).getData('text') || '';
+          const clean = text.replace(/[^0-9]/g, '');
+          document.execCommand('insertText', false, clean);
+        }
+      });
+
+      container.addEventListener('click', async (e) => {
+        const gstLoginBtn = e.target.closest('[data-action="openGstLogin"]');
+        if (gstLoginBtn) {
+          const userName = gstLoginBtn.getAttribute('data-user');
+          if (userName) {
+            navigator.clipboard.writeText(userName).then(() => {
+              showToast(`📋 Copied username "${userName}"! Press Ctrl+V in the Username box on GST Portal.`);
+            }).catch(() => {
+              showToast(`Opening GST Portal for ${userName}...`);
+            });
+          }
+          window.open('https://services.gst.gov.in/services/login', '_blank');
+          return;
+        }
+
+        const copyBtn = e.target.closest('[data-copy]');
+        if (copyBtn) {
+          const text = copyBtn.getAttribute('data-copy');
+          navigator.clipboard.writeText(text);
+          showToast(`Copied "${text}" to clipboard!`);
+          return;
+        }
+
+        const g1Btn = e.target.closest('[data-action="clickG1"]');
+        if (g1Btn) {
+          const clientId = g1Btn.getAttribute('data-id');
+          openDateModal(clientId, 'gstr1', 'monthly');
+          return;
+        }
+
+        const g3bBtn = e.target.closest('[data-action="clickG3b"]');
+        if (g3bBtn) {
+          const clientId = g3bBtn.getAttribute('data-id');
+          openDateModal(clientId, 'gstr3b', 'monthly');
+          return;
+        }
+
+        const lockedBtn = e.target.closest('[data-action="lockedG3b"]');
+        if (lockedBtn) {
+          const clientId = lockedBtn.getAttribute('data-id');
+          const item = allFilings.find(f => f.id === clientId);
+          const name = item ? item.name : 'this shop';
+          showToast(`⚠️ GSTR-1 must be filed before you can file GSTR-3B for ${name}!`);
+          return;
+        }
+
+        const editNameBtn = e.target.closest('[data-action="editShopName"]');
+        if (editNameBtn) {
+          const clientId = editNameBtn.getAttribute('data-id');
+          openEditShopNameModal(clientId, 'monthly');
+          return;
+        }
+
+        const deleteShopBtn = e.target.closest('[data-action="deleteShop"]');
+        if (deleteShopBtn) {
+          const clientId = deleteShopBtn.getAttribute('data-id');
+          const shopName = deleteShopBtn.getAttribute('data-name') || 'this shop';
+          if (confirm(`Are you sure you want to delete "${shopName}"?\n\nThis will remove the shop and all its return filing records across all months.`)) {
+            await deleteShop(clientId, shopName);
+          }
+          return;
+        }
+      });
     });
 
     selectAllCheckbox.addEventListener('change', (e) => {
@@ -1842,16 +2286,21 @@
       });
       document.querySelectorAll('.row-checkbox').forEach(cb => {
         cb.checked = isChecked;
-        cb.closest('tr').classList.toggle('selected', isChecked);
+        const tr = cb.closest('tr');
+        if (tr) tr.classList.toggle('selected', isChecked);
+        const card = cb.closest('.mobile-shop-card');
+        if (card) card.classList.toggle('selected', isChecked);
       });
       updateBulkBar();
     });
 
     // ==========================================
-    // QRMP TABLE EVENTS (M1, M2, M3 Compulsory, Q3B)
+    // QRMP TABLE & CARDS EVENTS (M1, M2, M3 Compulsory, Q3B)
     // ==========================================
-    if (qrmpTableBody) {
-      qrmpTableBody.addEventListener('click', async (e) => {
+    [qrmpTableBody, qrmpCardsContainer].forEach(container => {
+      if (!container) return;
+
+      container.addEventListener('click', async (e) => {
         const gstLoginBtn = e.target.closest('[data-action="openGstLogin"]');
         if (gstLoginBtn) {
           const userName = gstLoginBtn.getAttribute('data-user');
@@ -1935,7 +2384,7 @@
         }
       });
 
-      qrmpTableBody.addEventListener('change', async (e) => {
+      container.addEventListener('change', async (e) => {
         if (e.target.classList.contains('qrmp-remarks-input')) {
           const clientId = e.target.getAttribute('data-id');
           await updateQrmpFiling(clientId, { remarks: e.target.value.trim() });
@@ -1952,7 +2401,7 @@
       });
 
       // Number-only validation for QRMP taxable amount
-      qrmpTableBody.addEventListener('keydown', (e) => {
+      container.addEventListener('keydown', (e) => {
         if (e.target.classList.contains('qrmp-taxable-amount-input')) {
           if (['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
           if (e.key === 'Enter') { e.target.blur(); return; }
@@ -1961,7 +2410,7 @@
         }
       });
 
-      qrmpTableBody.addEventListener('input', (e) => {
+      container.addEventListener('input', (e) => {
         if (e.target.classList.contains('qrmp-taxable-amount-input')) {
           const val = e.target.value;
           const clean = val.replace(/[^0-9]/g, '');
@@ -1969,7 +2418,7 @@
         }
       });
 
-      qrmpTableBody.addEventListener('paste', (e) => {
+      container.addEventListener('paste', (e) => {
         if (e.target.classList.contains('qrmp-taxable-amount-input')) {
           e.preventDefault();
           const text = (e.clipboardData || window.clipboardData).getData('text') || '';
@@ -1977,13 +2426,15 @@
           document.execCommand('insertText', false, clean);
         }
       });
-    }
+    });
 
     // ==========================================
-    // COMPOSITION TABLE EVENTS (CMP-08, GSTR-4)
+    // COMPOSITION TABLE & CARDS EVENTS (CMP-08, GSTR-4)
     // ==========================================
-    if (compTableBody) {
-      compTableBody.addEventListener('click', async (e) => {
+    [compTableBody, compCardsContainer].forEach(container => {
+      if (!container) return;
+
+      container.addEventListener('click', async (e) => {
         const gstLoginBtn = e.target.closest('[data-action="openGstLogin"]');
         if (gstLoginBtn) {
           const userName = gstLoginBtn.getAttribute('data-user');
@@ -2040,7 +2491,7 @@
         }
       });
 
-      compTableBody.addEventListener('change', async (e) => {
+      container.addEventListener('change', async (e) => {
         if (e.target.classList.contains('comp-remarks-input')) {
           const clientId = e.target.getAttribute('data-id');
           await updateCompositionFiling(clientId, { remarks: e.target.value.trim() });
@@ -2072,7 +2523,7 @@
       });
 
       // Number-only validation for Composition inputs
-      compTableBody.addEventListener('keydown', (e) => {
+      container.addEventListener('keydown', (e) => {
         if (e.target.classList.contains('comp-turnover-input') || e.target.classList.contains('comp-tax-input')) {
           if (['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
           if (e.key === 'Enter') { e.target.blur(); return; }
@@ -2081,7 +2532,7 @@
         }
       });
 
-      compTableBody.addEventListener('input', (e) => {
+      container.addEventListener('input', (e) => {
         if (e.target.classList.contains('comp-turnover-input') || e.target.classList.contains('comp-tax-input')) {
           const val = e.target.value;
           const clean = val.replace(/[^0-9]/g, '');
@@ -2089,7 +2540,7 @@
         }
       });
 
-      compTableBody.addEventListener('paste', (e) => {
+      container.addEventListener('paste', (e) => {
         if (e.target.classList.contains('comp-turnover-input') || e.target.classList.contains('comp-tax-input')) {
           e.preventDefault();
           const text = (e.clipboardData || window.clipboardData).getData('text') || '';
@@ -2097,7 +2548,7 @@
           document.execCommand('insertText', false, clean);
         }
       });
-    }
+    });
 
     // ==========================================
     // EXPORT BUTTONS (Context-Aware)

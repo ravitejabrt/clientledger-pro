@@ -160,3 +160,30 @@
     border: 1px solid #e2e8f0 !important;
   }
 }
+
+/* ========================================================
+   RESPONSIVE GSTR EMBED (Mobile, Tablet, Desktop)
+   ======================================================== */
+#view-gstr {
+  width: 100% !important;
+  min-height: calc(100vh - 65px);
+  -webkit-overflow-scrolling: touch;
+}
+
+#gstr-frame {
+  width: 100% !important;
+  height: calc(100vh - 65px) !important;
+  min-height: 600px;
+  border: 0 !important;
+  display: block;
+}
+
+@media (max-width: 768px) {
+  #view-gstr {
+    min-height: calc(100dvh - 60px);
+  }
+  #gstr-frame {
+    height: calc(100dvh - 60px) !important;
+    min-height: 500px;
+  }
+}
