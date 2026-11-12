@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BRT - GST Monthly Returns & Rent Compliance Tracker</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Navigation Header -->
+    <header class="top-nav">
+      <div class="nav-left">
+        <div class="app-logo">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="18" rx="2"/>
+            <path d="M7 8h10M7 12h10M7 16h6"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="app-title">BRT GST Returns &amp; Rent Tracker</h1>
+          <p class="app-subtitle" id="appSubtitle">Regular Monthly Filings (GSTR-1 &amp; GSTR-3B) &bull; Commercial Rent Compliance</p>
+        </div>
+      </div>
+
+      <div class="nav-center">
+        <div class="month-selector-group">
+          <label for="monthSelect" class="selector-label" id="periodSelectLabel">Return Period:</label>
+          <select id="monthSelect" class="month-dropdown"></select>
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <button id="btnCopyPrevData" class="btn btn-outline" title="Automatically copy data from previous period (Company Name, Rent Option & Amount)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+          <span id="btnCopyPrevDataText">Copy Prev Month</span>
+        </button>
+        <button id="btnRolloverModal" class="btn btn-primary" title="Advance to new period">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <span id="btnRolloverText">Month Rollover</span>
+        </button>
+        <button id="btnAddClientModal" class="btn btn-secondary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          Add Shop
+        </button>
+        <div class="export-group">
+          <button id="btnExportExcel" class="btn btn-excel" title="Download Excel Workbook with Dropdowns">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+            Excel (.xlsx)
+          </button>
+          <button id="btnExportCsv" class="btn btn-outline" title="Export CSV for Current Period">
+            CSV
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Scheme Selection Tabs Navigation Bar -->
+    <nav class="scheme-navigation-bar">
+      <div class="scheme-tabs-container">
+        <button class="scheme-tab-btn active" data-scheme="monthly" id="tabMonthly">
+          <span class="tab-icon">📅</span>
+          <span class="tab-title-wrap">
+            <span class="tab-text">Monthly</span>
+            <span class="tab-pill">Regular 3B</span>
+          </span>
+        </button>
+        <button class="scheme-tab-btn" data-scheme="qrmp" id="tabQrmp">
+          <span class="tab-icon">📊</span>
+          <span class="tab-title-wrap">
+            <span class="tab-text">QRMP</span>
+            <span class="tab-pill tab-pill-qrmp">Quarterly</span>
+          </span>
+        </button>
+        <button class="scheme-tab-btn" data-scheme="composition" id="tabComposition">
+          <span class="tab-icon">🏷️</span>
+          <span class="tab-title-wrap">
+            <span class="tab-text">Composition</span>
+            <span class="tab-pill tab-pill-comp">CMP-08</span>
+          </span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Period Status & Working Month Control Banner -->
+    <section class="period-status-banner" id="periodStatusBanner">
+      <div class="period-status-content">
+        <span class="period-pulse-dot dot-nov" id="periodStatusDot"></span>
+        <div class="period-status-text" id="periodStatusLabel">
+          <label for="workingMonthSelect" class="working-month-label">Current Working Month:</label>
+          <select id="workingMonthSelect" class="working-month-select" title="Change Current Working Calendar Month">
+            <option value="NOV 2026">NOV 2026 (Present)</option>
+            <option value="DEC 2026">DEC 2026</option>
+            <option value="JAN 2027">JAN 2027</option>
+            <option value="FEB 2027">FEB 2027</option>
+            <option value="MAR 2027">MAR 2027</option>
+          </select>
+          <span class="period-subtext-info" id="periodSubtextInfo">&bull; Monthly Return Period: <strong>till OCT 2026</strong> &bull; Quarters: <strong>till Q3 (JUL - SEP)</strong></span>
+        </div>
+      </div>
+      <div class="period-actions-group">
+        <button id="btnAdvanceMonth" class="btn btn-sm btn-advance-action" title="Advance to next calendar month (DEC 2026)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <span id="btnAdvanceMonthText">Advance to DEC 2026 ➔</span>
+        </button>
+        <button id="btnResetNov" class="btn btn-sm btn-outline-white" style="display: none;" title="Reset back to November 2026 (Present)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          <span>↩ Reset to NOV 2026</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- 1. MONTHLY SCHEME VIEW (Attached Screenshot Layout) -->
+      <div id="viewMonthly" class="scheme-view active">
+      <!-- KPI Metric Cards Grid -->
+      <section class="kpi-grid">
+        <div class="kpi-card card-total">
+          <div class="kpi-header">
+            <span class="kpi-title">TOTAL REGISTERED SHOPS</span>
+            <span class="kpi-icon">🏪</span>
+          </div>
+          <div class="kpi-value" id="kpiTotalClients">63</div>
+          <div class="kpi-subtext">Active GSTIN businesses</div>
+        </div>
+
+        <div class="kpi-card card-rent">
+          <div class="kpi-header">
+            <span class="kpi-title">COMMERCIAL RENT</span>
+            <span class="kpi-icon">🏢</span>
+          </div>
+          <div class="kpi-value" id="kpiRentCount">0</div>
+          <div class="kpi-subtext" id="kpiTotalRentAmount">Total Rent: ₹0</div>
+        </div>
+
+        <div class="kpi-card card-itc">
+          <div class="kpi-header">
+            <span class="kpi-title">RENT INPUT (ITC)</span>
+            <span class="kpi-icon">💳</span>
+          </div>
+          <div class="kpi-value" id="kpiItcCount">0</div>
+          <div class="kpi-subtext">Eligible 3B Table 4(A)(5) credit</div>
+        </div>
+
+        <div class="kpi-card card-own">
+          <div class="kpi-header">
+            <span class="kpi-title">OWN PREMISES / NOC</span>
+            <span class="kpi-icon">🏠</span>
+          </div>
+          <div class="kpi-value" id="kpiOwnCount">0</div>
+          <div class="kpi-subtext">Free rent / Family Consent</div>
+        </div>
+
+        <div class="kpi-card card-gstr1">
+          <div class="kpi-header">
+            <span class="kpi-title">GSTR-1 FILED</span>
+            <span class="kpi-icon">📋</span>
+          </div>
+          <div class="kpi-value" id="kpiG1Filed">0 / 63</div>
+          <div class="progress-bar-container">
+            <div id="progG1" class="progress-bar" style="width: 0%"></div>
+          </div>
+          <div class="kpi-subtext" id="kpiG1Due">Due Date: 11th</div>
+        </div>
+
+        <div class="kpi-card card-gstr3b">
+          <div class="kpi-header">
+            <span class="kpi-title">GSTR-3B FILED</span>
+            <span class="kpi-icon">⚖️</span>
+          </div>
+          <div class="kpi-value" id="kpiG3bFiled">0 / 63</div>
+          <div class="progress-bar-container">
+            <div id="progG3b" class="progress-bar" style="width: 0%"></div>
+          </div>
+          <div class="kpi-subtext" id="kpiG3bDue">Due Date: 20th</div>
+        </div>
+      </section>
+
+      <!-- Filter & Search Control Bar -->
+      <section class="controls-bar">
+        <div class="search-box">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="searchInput" placeholder="Search by shop name, username, or GSTIN..." autocomplete="off">
+          <button id="btnClearSearch" class="btn-clear" style="display: none;">&times;</button>
+        </div>
+
+        <div class="filter-pills">
+          <span class="filter-label">Rent:</span>
+          <button class="pill-btn active" data-rent="ALL">All</button>
+          <button class="pill-btn pill-rent" data-rent="Rent">Rent</button>
+          <button class="pill-btn pill-itc" data-rent="ITC">ITC</button>
+          <button class="pill-btn pill-own" data-rent="Own">Own</button>
+        </div>
+
+        <div class="filter-pills">
+          <span class="filter-label">Status:</span>
+          <button class="pill-btn active" data-status="ALL">All</button>
+          <button class="pill-btn pill-pending" data-status="PENDING">Pending Only</button>
+          <button class="pill-btn pill-filed" data-status="FILED">Fully Filed</button>
+        </div>
+
+        <div class="gst-portal-link">
+          <button id="btnBookmarkletInfo" class="btn btn-outline btn-sm" title="Learn how to 1-click autofill GST login">
+            💡 Auto-Fill Guide
+          </button>
+          <a href="https://services.gst.gov.in/services/login" target="_blank" rel="noopener" class="portal-btn">
+            <span>GST Portal Login</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>
+        </div>
+      </section>
+
+      <!-- Bulk Actions Bar (hidden by default) -->
+      <div id="bulkActionsBar" class="bulk-bar" style="display: none;">
+        <span id="bulkSelectedCount" class="bulk-count">0 shops selected</span>
+        <div class="bulk-buttons">
+          <button id="btnBulkMarkG1" class="btn btn-sm btn-success">Mark GSTR-1 as Filed</button>
+          <button id="btnBulkMarkG3b" class="btn btn-sm btn-success">Mark GSTR-3B as Filed</button>
+          <button id="btnBulkSetRent" class="btn btn-sm btn-secondary">Set Rent Type</button>
+        </div>
+      </div>
+
+      <!-- Main Data Table Container -->
+      <section class="table-card">
+        <div class="mobile-table-scroll-hint">
+          <span class="scroll-hint-arrow">←</span>
+          <span>Swipe table horizontally to view all filing fields &amp; actions</span>
+          <span class="scroll-hint-arrow">→</span>
+        </div>
+        <div class="table-responsive">
+          <table class="compliance-table" id="complianceTable">
+            <thead>
+              <tr>
+                <th width="40"><input type="checkbox" id="selectAllCheckbox"></th>
+                <th width="50">S.NO</th>
+                <th>COMPANY / SHOP NAME</th>
+                <th width="180" class="th-rent-header">RENT OPTION &amp; AMOUNT</th>
+                <th width="180">USER NAME</th>
+                <th width="240">GSTIN &amp; PORTAL LOGIN</th>
+                <th width="140">GSTR-1</th>
+                <th width="140">GSTR-3B</th>
+                <th width="150" class="th-tax-header">TAXABLE AMOUNT</th>
+                <th>REMARKS</th>
+                <th width="160" style="text-align: center;">ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody">
+              <!-- Dynamically rendered rows -->
+            </tbody>
+          </table>
+        </div>
+        <div id="noResults" class="no-results" style="display: none;">
+          <p>No shops match your current search or filter criteria.</p>
+        </div>
+      </section>
+      </div> <!-- End #viewMonthly -->
+
+      <!-- 2. QRMP SCHEME VIEW -->
+      <div id="viewQrmp" class="scheme-view" style="display: none;">
+        <!-- QRMP Statutory Rule Banner -->
+        <div class="qrmp-info-banner">
+          <div class="qrmp-banner-icon">⚖️</div>
+          <div class="qrmp-banner-text">
+            <strong>QRMP Statutory Filing Rule:</strong> Companies can file GSTR-1 for three months (<strong>Month 1 (IFF)</strong>, <strong>Month 2 (IFF)</strong>, and <strong>Month 3 (Quarterly)</strong>). Filing <strong>Month 3 GSTR-1 is COMPULSORY</strong>. Only after Month 3 GSTR-1 is filed can the <strong>Quarterly GSTR-3B</strong> return be filed.
+          </div>
+        </div>
+
+        <!-- QRMP KPI Metric Cards Grid -->
+        <section class="kpi-grid">
+          <div class="kpi-card card-total">
+            <div class="kpi-header">
+              <span class="kpi-title">TOTAL QRMP SHOPS</span>
+              <span class="kpi-icon">🏪</span>
+            </div>
+            <div class="kpi-value" id="kpiQrmpTotal">62</div>
+            <div class="kpi-subtext">Active quarterly businesses</div>
+          </div>
+
+          <div class="kpi-card card-gstr1">
+            <div class="kpi-header">
+              <span class="kpi-title" id="kpiQrmpM1Title">M1 GSTR-1 (OCT)</span>
+              <span class="kpi-icon">📋</span>
+            </div>
+            <div class="kpi-value" id="kpiQrmpM1Filed">0 / 62</div>
+            <div class="progress-bar-container"><div id="progQrmpM1" class="progress-bar" style="width: 0%"></div></div>
+            <div class="kpi-subtext" id="kpiQrmpM1Due">Due Date: 13th (Optional IFF)</div>
+          </div>
+
+          <div class="kpi-card card-gstr1">
+            <div class="kpi-header">
+              <span class="kpi-title" id="kpiQrmpM2Title">M2 GSTR-1 (NOV)</span>
+              <span class="kpi-icon">📋</span>
+            </div>
+            <div class="kpi-value" id="kpiQrmpM2Filed">0 / 62</div>
+            <div class="progress-bar-container"><div id="progQrmpM2" class="progress-bar" style="width: 0%"></div></div>
+            <div class="kpi-subtext" id="kpiQrmpM2Due">Due Date: 13th (Optional IFF)</div>
+          </div>
+
+          <div class="kpi-card card-gstr1" style="border-top: 3px solid #f59e0b;">
+            <div class="kpi-header">
+              <span class="kpi-title" id="kpiQrmpM3Title" style="color: #b45309;">★ M3 GSTR-1 (DEC)</span>
+              <span class="kpi-icon">⭐</span>
+            </div>
+            <div class="kpi-value" id="kpiQrmpM3Filed" style="color: #b45309;">0 / 62</div>
+            <div class="progress-bar-container"><div id="progQrmpM3" class="progress-bar" style="width: 0%; background: #f59e0b;"></div></div>
+            <div class="kpi-subtext" id="kpiQrmpM3Due">Due Date: 13th (COMPULSORY)</div>
+          </div>
+
+          <div class="kpi-card card-gstr3b">
+            <div class="kpi-header">
+              <span class="kpi-title">GSTR-3B QUARTERLY</span>
+              <span class="kpi-icon">⚖️</span>
+            </div>
+            <div class="kpi-value" id="kpiQrmpG3bFiled">0 / 62</div>
+            <div class="progress-bar-container"><div id="progQrmpG3b" class="progress-bar" style="width: 0%"></div></div>
+            <div class="kpi-subtext" id="kpiQrmpG3bDue">Due Date: 22nd / 24th (Locked until M3)</div>
+          </div>
+
+          <div class="kpi-card card-rent">
+            <div class="kpi-header">
+              <span class="kpi-title">QUARTERLY TAXABLE</span>
+              <span class="kpi-icon">💵</span>
+            </div>
+            <div class="kpi-value" id="kpiQrmpTaxCount">0</div>
+            <div class="kpi-subtext" id="kpiQrmpTotalTax">Total: ₹0</div>
+          </div>
+        </section>
+
+        <!-- QRMP Filter & Search Control Bar -->
+        <section class="controls-bar">
+          <div class="search-box">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="qrmpSearchInput" placeholder="Search QRMP shop name, username, or GSTIN..." autocomplete="off">
+            <button id="btnQrmpClearSearch" class="btn-clear" style="display: none;">&times;</button>
+          </div>
+
+          <div class="filter-pills">
+            <span class="filter-label">Rent:</span>
+            <button class="pill-btn active" data-qrmp-rent="ALL">All</button>
+            <button class="pill-btn pill-rent" data-qrmp-rent="Rent">Rent</button>
+            <button class="pill-btn pill-itc" data-qrmp-rent="ITC">ITC</button>
+            <button class="pill-btn pill-own" data-qrmp-rent="Own">Own</button>
+          </div>
+
+          <div class="filter-pills">
+            <span class="filter-label">Status:</span>
+            <button class="pill-btn active" data-qrmp-status="ALL">All</button>
+            <button class="pill-btn pill-pending" data-qrmp-status="PENDING">Pending 3B</button>
+            <button class="pill-btn pill-filed" data-qrmp-status="FILED">Fully Filed</button>
+          </div>
+
+          <div class="gst-portal-link">
+            <a href="https://services.gst.gov.in/services/login" target="_blank" rel="noopener" class="portal-btn">
+              <span>GST Portal Login</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>
+          </div>
+        </section>
+
+        <!-- QRMP Data Table Container -->
+        <section class="table-card">
+          <div class="mobile-table-scroll-hint">
+            <span class="scroll-hint-arrow">←</span>
+            <span>Swipe table horizontally to view all quarterly fields &amp; actions</span>
+            <span class="scroll-hint-arrow">→</span>
+          </div>
+          <div class="table-responsive">
+            <table class="compliance-table" id="qrmpTable">
+              <thead>
+                <tr>
+                  <th width="40"><input type="checkbox" id="qrmpSelectAllCheckbox"></th>
+                  <th width="50">S.NO</th>
+                  <th>COMPANY / SHOP NAME</th>
+                  <th width="180" class="th-rent-header">RENT OPTION &amp; AMOUNT</th>
+                  <th width="150">USER NAME</th>
+                  <th width="220">GSTIN &amp; PORTAL LOGIN</th>
+                  <th width="125" id="thQrmpM1">OCT (M1) G1</th>
+                  <th width="125" id="thQrmpM2">NOV (M2) G1</th>
+                  <th width="155" id="thQrmpM3" class="th-compulsory-header">DEC (M3) G1 <span class="tag-req">REQ</span></th>
+                  <th width="160" class="th-g3b-header">GSTR-3B (QUARTERLY)</th>
+                  <th width="140" class="th-tax-header">TAXABLE AMOUNT</th>
+                  <th>REMARKS</th>
+                  <th width="150" style="text-align: center;">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody id="qrmpTableBody">
+                <!-- Dynamically rendered QRMP rows -->
+              </tbody>
+            </table>
+          </div>
+          <div id="qrmpNoResults" class="no-results" style="display: none;">
+            <p>No QRMP shops match your search.</p>
+          </div>
+        </section>
+      </div> <!-- End #viewQrmp -->
+
+      <!-- 3. COMPOSITION SCHEME VIEW -->
+      <div id="viewComposition" class="scheme-view" style="display: none;">
+        <!-- Composition Rule Banner -->
+        <div class="composition-info-banner">
+          <div class="composition-banner-icon">🏷️</div>
+          <div class="composition-banner-text">
+            <strong>Composition Scheme (Section 10):</strong> Small taxpayers pay a fixed percentage of turnover (1% Traders/Manufacturers, 5% Restaurants, 6% Services) quarterly via <strong>CMP-08</strong> and file annual return <strong>GSTR-4</strong>.
+          </div>
+        </div>
+
+        <!-- Composition KPI Metric Cards Grid -->
+        <section class="kpi-grid">
+          <div class="kpi-card card-total">
+            <div class="kpi-header">
+              <span class="kpi-title">TOTAL COMPOSITION SHOPS</span>
+              <span class="kpi-icon">🏪</span>
+            </div>
+            <div class="kpi-value" id="kpiCompTotal">8</div>
+            <div class="kpi-subtext">Active Composition dealers</div>
+          </div>
+
+          <div class="kpi-card card-gstr1">
+            <div class="kpi-header">
+              <span class="kpi-title">CMP-08 FILED</span>
+              <span class="kpi-icon">📋</span>
+            </div>
+            <div class="kpi-value" id="kpiComp08Filed">0 / 8</div>
+            <div class="progress-bar-container"><div id="progComp08" class="progress-bar" style="width: 0%"></div></div>
+            <div class="kpi-subtext" id="kpiComp08Due">Due Date: 18th of Next Month</div>
+          </div>
+
+          <div class="kpi-card card-gstr3b">
+            <div class="kpi-header">
+              <span class="kpi-title">GSTR-4 ANNUAL FILED</span>
+              <span class="kpi-icon">⚖️</span>
+            </div>
+            <div class="kpi-value" id="kpiCompG4Filed">0 / 8</div>
+            <div class="progress-bar-container"><div id="progCompG4" class="progress-bar" style="width: 0%"></div></div>
+            <div class="kpi-subtext" id="kpiCompG4Due">Due Date: 30th April</div>
+          </div>
+
+          <div class="kpi-card card-rent">
+            <div class="kpi-header">
+              <span class="kpi-title">TOTAL TURNOVER</span>
+              <span class="kpi-icon">💵</span>
+            </div>
+            <div class="kpi-value" id="kpiCompTurnoverCount">0</div>
+            <div class="kpi-subtext" id="kpiCompTotalTurnover">Total: ₹0</div>
+          </div>
+
+          <div class="kpi-card card-itc">
+            <div class="kpi-header">
+              <span class="kpi-title">COMPOSITION TAX PAID</span>
+              <span class="kpi-icon">💰</span>
+            </div>
+            <div class="kpi-value" id="kpiCompTaxCount">0</div>
+            <div class="kpi-subtext" id="kpiCompTotalTax">Total: ₹0</div>
+          </div>
+        </section>
+
+        <!-- Composition Filter & Search Control Bar -->
+        <section class="controls-bar">
+          <div class="search-box">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="compSearchInput" placeholder="Search Composition shop name, username, or GSTIN..." autocomplete="off">
+            <button id="btnCompClearSearch" class="btn-clear" style="display: none;">&times;</button>
+          </div>
+
+          <div class="filter-pills">
+            <span class="filter-label">Status:</span>
+            <button class="pill-btn active" data-comp-status="ALL">All</button>
+            <button class="pill-btn pill-pending" data-comp-status="PENDING">Pending CMP-08</button>
+            <button class="pill-btn pill-filed" data-comp-status="FILED">Fully Filed</button>
+          </div>
+
+          <div class="gst-portal-link">
+            <a href="https://services.gst.gov.in/services/login" target="_blank" rel="noopener" class="portal-btn">
+              <span>GST Portal Login</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>
+          </div>
+        </section>
+
+        <!-- Composition Data Table Container -->
+        <section class="table-card">
+          <div class="mobile-table-scroll-hint">
+            <span class="scroll-hint-arrow">←</span>
+            <span>Swipe table horizontally to view all composition fields &amp; actions</span>
+            <span class="scroll-hint-arrow">→</span>
+          </div>
+          <div class="table-responsive">
+            <table class="compliance-table" id="compTable">
+              <thead>
+                <tr>
+                  <th width="40"><input type="checkbox" id="compSelectAllCheckbox"></th>
+                  <th width="50">S.NO</th>
+                  <th>COMPANY / SHOP NAME</th>
+                  <th width="150">RENT OPTION &amp; AMOUNT</th>
+                  <th width="140">CATEGORY &amp; RATE</th>
+                  <th width="140">USER NAME</th>
+                  <th width="200">GSTIN &amp; PORTAL LOGIN</th>
+                  <th width="140">CMP-08 (QUARTERLY)</th>
+                  <th width="130" class="th-tax-header">TAXABLE TURNOVER</th>
+                  <th width="120">TAX AMOUNT (₹)</th>
+                  <th width="120">GSTR-4 (ANNUAL)</th>
+                  <th>REMARKS</th>
+                  <th width="130" style="text-align: center;">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody id="compTableBody">
+                <!-- Dynamically rendered Composition rows -->
+              </tbody>
+            </table>
+          </div>
+          <div id="compNoResults" class="no-results" style="display: none;">
+            <p>No Composition shops match your search.</p>
+          </div>
+        </section>
+      </div> <!-- End #viewComposition -->
+    </main>
+
+    <!-- Modal: Month-to-Month / Quarter-to-Quarter Rollover -->
+    <div id="modalRollover" class="modal-backdrop" style="display: none;">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 id="rolloverModalTitle">Advance Month (Month-to-Month Rollover)</h3>
+          <button class="modal-close" data-close="modalRollover">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-desc" id="rolloverModalDesc">
+            Advance your returns filing to a new month. All <strong>63 clients</strong> will be automatically copied with their selected <strong>Rent types (Rent, ITC, Own)</strong> and rent amounts preserved, while GSTR-1 and GSTR-3B will be reset to <strong>Pending</strong> for the new period.
+          </p>
+          <form id="rolloverForm">
+            <div class="form-group">
+              <label id="rolloverSourceLabel">Source Month (Copy From):</label>
+              <select id="rolloverSourceMonth" class="form-control"></select>
+            </div>
+            <div class="form-group">
+              <label id="rolloverNewIdLabel">New Month ID / Name (e.g. NOV 2026, JAN 2027):</label>
+              <input type="text" id="rolloverNewMonth" class="form-control" placeholder="NOV 2026" required>
+            </div>
+            <div class="form-group">
+              <label id="rolloverNewTitleLabel">Full Month Title (e.g. NOVEMBER 2026):</label>
+              <input type="text" id="rolloverNewTitle" class="form-control" placeholder="NOVEMBER 2026">
+            </div>
+            <div class="form-row" id="rolloverDueDatesRow">
+              <div class="form-group col">
+                <label id="rolloverG1DueLabel">GSTR-1 Statutory Due Date:</label>
+                <input type="text" id="rolloverG1Due" class="form-control" placeholder="11th of Next Month" value="11th of Next Month">
+              </div>
+              <div class="form-group col">
+                <label id="rolloverG3bDueLabel">GSTR-3B Statutory Due Date:</label>
+                <input type="text" id="rolloverG3bDue" class="form-control" placeholder="20th of Next Month" value="20th of Next Month">
+              </div>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" id="rolloverPreserveRent" checked disabled>
+              <label for="rolloverPreserveRent" id="rolloverPreserveLabel">Preserve client rent choices (Rent / ITC / Own) &amp; rent amounts</label>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline" data-close="modalRollover">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="btnRolloverSubmit">Create Month &amp; Roll Over</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Add New Shop -->
+    <div id="modalAddClient" class="modal-backdrop" style="display: none;">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3>Add New Shop / Business</h3>
+          <button class="modal-close" data-close="modalAddClient">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="addClientForm">
+            <div class="form-group">
+              <label for="addScheme">GST Filing Scheme *:</label>
+              <select id="addScheme" class="form-control" required>
+                <option value="monthly" selected>Monthly Filings (Regular 3B)</option>
+                <option value="qrmp">QRMP Scheme (Quarterly GSTR-1 &amp; 3B)</option>
+                <option value="composition">Composition Scheme (CMP-08 &amp; GSTR-4)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Company / Trade Name *:</label>
+              <input type="text" id="addName" class="form-control" placeholder="e.g. Sri Balaji Medicals" required>
+            </div>
+            <div class="form-row">
+              <div class="form-group col">
+                <label>GST Portal User Name:</label>
+                <input type="text" id="addUser" class="form-control" placeholder="e.g. balaji_med12">
+              </div>
+              <div class="form-group col">
+                <label>GSTIN (15 Digits):</label>
+                <input type="text" id="addGst" class="form-control" placeholder="36AAAF...1Z5" maxlength="15">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group col">
+                <label for="addRent">Default Rent Status *:</label>
+                <select id="addRent" class="form-control" required>
+                  <option value="Rent" selected>Rent</option>
+                  <option value="ITC">ITC</option>
+                  <option value="Own">Own</option>
+                </select>
+              </div>
+              <div class="form-group col" id="colAddRentAmount" style="display: block;">
+                <label for="addRentAmount">Rent Amount (₹) *:</label>
+                <div class="input-with-currency">
+                  <span class="currency-prefix">₹</span>
+                  <input type="text" id="addRentAmount" class="form-control" placeholder="e.g. 5000" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+                </div>
+              </div>
+              <div class="form-group col">
+                <label for="addTaxableAmount">Taxable Amount (₹):</label>
+                <div class="input-with-currency">
+                  <span class="currency-prefix">₹</span>
+                  <input type="text" id="addTaxableAmount" class="form-control" placeholder="e.g. 50000" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+                </div>
+              </div>
+              <div class="form-group col">
+                <label for="addRemarks">Remarks / Notes:</label>
+                <input type="text" id="addRemarks" class="form-control" placeholder="e.g. Additional shop notes">
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline" data-close="modalAddClient">Cancel</button>
+              <button type="submit" class="btn btn-primary">Save Shop</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Mark Return as Filed (Date & ARN) -->
+    <div id="modalFilingDate" class="modal-backdrop" style="display: none;">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 id="filingDateModalTitle">Record Filing Date</h3>
+          <button class="modal-close" data-close="modalFilingDate">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="filingDateForm">
+            <input type="hidden" id="filingDateClientId">
+            <input type="hidden" id="filingDateReturnType">
+            <input type="hidden" id="filingDateScheme" value="monthly">
+            <div class="filing-modal-header-info">
+              <span id="filingDateReturnBadge" class="filing-badge">GSTR-1</span>
+              <span id="filingDateShopName" class="modal-shop-title"></span>
+            </div>
+            <div class="form-group" style="margin-top: 14px;">
+              <label>When was this return filed? (Filing Date) *:</label>
+              <input type="date" id="filingDateField" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label>Acknowledgement Reference Number (ARN) (Optional):</label>
+              <input type="text" id="filingDateArnField" class="form-control" placeholder="e.g. AA3610260012345">
+            </div>
+            <div class="modal-footer" style="justify-content: space-between;">
+              <button type="button" id="btnRevertToPending" class="btn btn-outline" style="color: #dc2626; border-color: #fca5a5; display: none;">Revert to Pending</button>
+              <div style="display: flex; gap: 8px; margin-left: auto;">
+                <button type="button" class="btn btn-outline" data-close="modalFilingDate">Cancel</button>
+                <button type="submit" id="btnConfirmFilingDate" class="btn btn-success">✓ Confirm Filed</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Auto-Fill Guide & Bookmarklet -->
+    <div id="modalBookmarklet" class="modal-backdrop" style="display: none;">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3>GST Portal Auto-Fill Guide</h3>
+          <button class="modal-close" data-close="modalBookmarklet">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="guide-step">
+            <h4>Method 1: Direct Clipboard Paste (Fastest &amp; Built-in)</h4>
+            <p>1. When you click the <strong>↗ Login Icon</strong> beside any GSTIN, the shop's <strong>Username is copied automatically</strong>.</p>
+            <p>2. The GST portal opens in a new tab with the Username box focused.</p>
+            <p>3. Just press <strong>Ctrl + V</strong> to paste the username immediately!</p>
+          </div>
+          <div class="guide-step" style="margin-top: 16px;">
+            <h4>Method 2: One-Click Bookmarklet (Instant Auto-Fill)</h4>
+            <p>Drag this link to your browser Bookmarks Bar:</p>
+            <div style="margin: 10px 0;">
+              <a href="javascript:(function(){navigator.clipboard.readText().then(function(t){var u=document.getElementById('username');if(u){u.value=t;u.dispatchEvent(new Event('input',{bubbles:true}));var p=document.getElementById('user_pass');if(p)p.focus();}else{alert('Username field not found. Are you on the GST login page?');}}).catch(function(e){var val=prompt('Enter or paste GST Username:');if(val){var u=document.getElementById('username');if(u){u.value=val;u.dispatchEvent(new Event('input',{bubbles:true}));}}});})();" class="btn btn-primary btn-sm" onclick="event.preventDefault(); alert('Drag this button to your Bookmarks Bar (Ctrl+Shift+O) to install!');">⭐ Paste GST Username</a>
+            </div>
+            <p style="font-size: 0.8rem; color: #64748b;">Whenever you are on the GST Portal tab, click this bookmark and it will paste the username directly into the username field!</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" data-close="modalBookmarklet">Got It</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Edit Company / Shop Details -->
+    <div id="modalEditShopName" class="modal-backdrop" style="display: none;">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3>Edit Company / Shop Details</h3>
+          <button class="modal-close" data-close="modalEditShopName">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="editShopNameForm">
+            <input type="hidden" id="editShopId">
+            <input type="hidden" id="editShopScheme" value="monthly">
+            <div class="form-group" style="margin-bottom: 12px;">
+              <div id="editShopInfoBadge" class="info-badge-box"></div>
+            </div>
+
+            <div class="form-group">
+              <label for="editShopInputName">Company / Shop Name *:</label>
+              <input type="text" id="editShopInputName" class="form-control" placeholder="Enter company / shop name" required autocomplete="off">
+            </div>
+
+            <div class="form-row">
+              <div class="form-group col">
+                <label for="editShopInputUser">USER NAME (GST Portal):</label>
+                <div class="input-with-button">
+                  <input type="text" id="editShopInputUser" class="form-control" placeholder="e.g. almaas12" autocomplete="off">
+                  <button type="button" id="btnCopyModalUser" class="btn-input-action" title="Copy User Name">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="form-group col">
+                <label for="editShopInputGst">GSTIN (15 Digits):</label>
+                <div class="input-with-button">
+                  <input type="text" id="editShopInputGst" class="form-control" placeholder="36AAQFA1103J1ZO" maxlength="15" style="text-transform: uppercase;" autocomplete="off">
+                  <button type="button" id="btnCopyModalGst" class="btn-input-action" title="Copy GSTIN">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Rent Status, Rent Amount & Taxable Amount -->
+            <div class="form-row" style="margin-top: 10px;">
+              <div class="form-group col">
+                <label for="editShopInputRentStatus">Rent Status *:</label>
+                <select id="editShopInputRentStatus" class="form-control" required>
+                  <option value="Rent">Rent</option>
+                  <option value="ITC">ITC</option>
+                  <option value="Own">Own</option>
+                </select>
+              </div>
+              <div class="form-group col" id="colEditRentAmount">
+                <label for="editShopInputRentAmount">Monthly Rent Amount (₹):</label>
+                <div class="input-with-currency">
+                  <span class="currency-prefix">₹</span>
+                  <input type="text" id="editShopInputRentAmount" class="form-control" placeholder="e.g. 5000" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+                </div>
+              </div>
+              <div class="form-group col">
+                <label for="editShopInputTaxableAmount">Taxable Amount (₹):</label>
+                <div class="input-with-currency">
+                  <span class="currency-prefix">₹</span>
+                  <input type="text" id="editShopInputTaxableAmount" class="form-control" placeholder="e.g. 50000" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+                </div>
+              </div>
+            </div>
+
+            <!-- GSTIN & PORTAL LOGIN Section -->
+            <div class="portal-login-box">
+              <div class="portal-login-info">
+                <span class="portal-login-title">GSTIN &amp; PORTAL LOGIN</span>
+                <span class="portal-login-desc" id="modalPortalLoginDesc">Copies username and opens GST login</span>
+              </div>
+              <button type="button" id="btnModalPortalLogin" class="btn btn-portal-action" title="Copy username and open GST portal login">
+                <span>Open GST Portal Login</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </button>
+            </div>
+
+            <div class="modal-footer" style="margin-top: 16px; justify-content: space-between;">
+              <button type="button" id="btnModalDeleteShop" class="btn btn-outline" style="color: #dc2626; border-color: #fca5a5; display: inline-flex; align-items: center; gap: 6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                Delete Shop
+              </button>
+              <div style="display: flex; gap: 8px; margin-left: auto;">
+                <button type="button" class="btn btn-outline" data-close="modalEditShopName">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="btnSaveShopName">Save Details</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast" class="toast" style="display: none;"></div>
+  </div>
+
+  <script src="initial-data.js"></script>
+  <script src="supabase-config.js"></script>
+  <script src="supabase-client.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
