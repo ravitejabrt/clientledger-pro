@@ -1443,7 +1443,7 @@ WHERE id = 'main_store';`;
     }
 
     state.activeView = viewName;
-    ['dashboard', 'clients', 'client-detail', 'matrix', 'payments'].forEach(v => {
+    ['dashboard', 'clients', 'client-detail', 'matrix', 'payments', 'gstr'].forEach(v => {
       const el = document.getElementById(`view-${v}`);
       if (el) el.classList.add('hidden');
     });
@@ -1456,8 +1456,9 @@ WHERE id = 'main_store';`;
     const navClients = document.getElementById('nav-clients');
     const navMatrix = document.getElementById('nav-matrix');
     const navPayments = document.getElementById('nav-payments');
+    const navGstr = document.getElementById('nav-gstr');
 
-    [navDashboard, navClients, navMatrix, navPayments].forEach(nav => {
+    [navDashboard, navClients, navMatrix, navPayments, navGstr].forEach(nav => {
       if (!nav) return;
       nav.className =
         'px-3 py-2 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center space-x-1.5';
@@ -1475,6 +1476,9 @@ WHERE id = 'main_store';`;
     } else if (viewName === 'payments' && navPayments) {
       navPayments.className =
         'px-3 py-2 rounded-lg text-sm font-medium transition-colors text-blue-700 bg-blue-50 hover:bg-blue-100 flex items-center space-x-1.5';
+    } else if (viewName === 'gstr' && navGstr) {
+      navGstr.className =
+        'px-3 py-2 rounded-lg text-sm font-medium transition-colors text-blue-700 bg-blue-50 hover:bg-blue-100 flex items-center space-x-1.5';
     }
 
     if (viewName === 'dashboard') renderDashboard();
@@ -1483,6 +1487,12 @@ WHERE id = 'main_store';`;
     if (viewName === 'payments') renderPaymentsView();
     if (viewName === 'client-detail' && state.activeClientId) {
       renderClientDetail(state.activeClientId);
+    }
+    if (viewName === 'gstr') {
+      const frame = document.getElementById('gstr-frame');
+      if (frame && (!frame.src || frame.src.endsWith('/gstr/index.html') === false)) {
+        frame.src = '/gstr/index.html';
+      }
     }
 
     // Scroll to top
