@@ -101,3 +101,23 @@ SELECT
     updated_at AS last_synced_at
 FROM public.clientledger_data
 WHERE id = 'main_store';
+
+-- View 4: Outgoing Payments & Expenses Table (Employees, Office Expenses, Other Expenses)
+CREATE OR REPLACE VIEW public.v_expenses AS
+SELECT 
+    e->>'id' AS expense_id,
+    e->>'date' AS expense_date,
+    e->>'category' AS main_category,
+    e->>'subcategory' AS subcategory,
+    e->>'payee' AS payee,
+    e->>'employeeRole' AS employee_role,
+    e->>'salaryMonth' AS salary_month,
+    e->>'billNumber' AS bill_number,
+    COALESCE((e->>'amount')::numeric, 0) AS amount,
+    e->>'method' AS payment_method,
+    e->>'reference' AS reference,
+    e->>'notes' AS notes,
+    e->>'createdAt' AS created_at
+FROM public.clientledger_data,
+     jsonb_array_elements(COALESCE(data->'expenses', '[]'::jsonb)) AS e
+WHERE id = 'main_store';

@@ -26,6 +26,7 @@
   const state = {
     isAuthenticated: false,
     clients: [],
+    expenses: [],
     settings: {
       currency: '₹',
       businessName: '',
@@ -40,9 +41,17 @@
     },
     activeView: 'dashboard',
     activeClientId: null,
+    activeExpenseId: null,
     searchQuery: '',
     statusFilter: 'all',
     monthBreakdownFilter: 'all',
+    expenseFilter: {
+      category: 'all',
+      search: '',
+      preset: 'all',
+      from: '',
+      to: '',
+    },
     dashboardFilter: {
       preset: 'all',
       from: '',
@@ -52,6 +61,7 @@
   };
 
   const STORAGE_KEY = 'clientledger_pro_data_v1';
+  const EXPENSES_STORAGE_KEY = 'clientledger_pro_expenses_v1';
   const SETTINGS_KEY = 'clientledger_pro_settings_v1';
   const AUTH_KEY = 'clientledger_auth_user';
 
@@ -715,6 +725,25 @@ SELECT
 FROM public.clientledger_data,
      jsonb_array_elements(COALESCE(data->'clients', '[]'::jsonb)) AS c,
      jsonb_array_elements(COALESCE(c->'payments', '[]'::jsonb)) AS p
+WHERE id = 'main_store';
+
+-- View 4: Outgoing Payments & Expenses Table
+CREATE OR REPLACE VIEW public.v_expenses AS
+SELECT 
+    e->>'id' AS expense_id,
+    e->>'date' AS expense_date,
+    e->>'category' AS category,
+    e->>'subcategory' AS subcategory,
+    e->>'payee' AS payee,
+    e->>'employeeRole' AS employee_role,
+    e->>'salaryMonth' AS salary_month,
+    e->>'billNumber' AS bill_number,
+    COALESCE((e->>'amount')::numeric, 0) AS amount,
+    e->>'method' AS payment_method,
+    e->>'reference' AS reference,
+    e->>'notes' AS notes
+FROM public.clientledger_data,
+     jsonb_array_elements(COALESCE(data->'expenses', '[]'::jsonb)) AS e
 WHERE id = 'main_store';`;
 
   function copySupabaseSql() {
@@ -1086,6 +1115,12 @@ WHERE id = 'main_store';`;
       state.clients = [];
     }
 
+    if (Array.isArray(remoteData.expenses)) {
+      state.expenses = remoteData.expenses;
+    } else if (!state.expenses) {
+      state.expenses = [];
+    }
+
     if (remoteData.settings && typeof remoteData.settings === 'object') {
       const localSupUrl = state.settings.supabaseUrl;
       const localSupKey = state.settings.supabaseKey;
@@ -1098,6 +1133,7 @@ WHERE id = 'main_store';`;
 
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.clients));
+      localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(state.expenses));
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
     } catch (err) {}
 
@@ -1108,6 +1144,7 @@ WHERE id = 'main_store';`;
     else if (state.activeView === 'clients') renderClientsList();
     else if (state.activeView === 'client-detail' && state.activeClientId) renderClientDetail(state.activeClientId);
     else if (state.activeView === 'matrix') renderMatrixView();
+    else if (state.activeView === 'payments') renderPaymentsView();
   }
 
   async function syncToCloud(options = {}) {
@@ -1147,6 +1184,7 @@ WHERE id = 'main_store';`;
 
     const payload = {
       clients: state.clients,
+      expenses: state.expenses || [],
       settings: state.settings,
       lastModified: state.settings.lastModified || Date.now(),
       version: 1,
@@ -1319,6 +1357,20 @@ WHERE id = 'main_store';`;
       state.clients = [];
     }
 
+    // 3. Load outgoing payments & expenses from localStorage
+    try {
+      const rawExp = localStorage.getItem(EXPENSES_STORAGE_KEY);
+      if (rawExp) {
+        state.expenses = JSON.parse(rawExp);
+        if (!Array.isArray(state.expenses)) state.expenses = [];
+      } else {
+        state.expenses = [];
+      }
+    } catch (e) {
+      console.error('Error loading expenses:', e);
+      state.expenses = [];
+    }
+
     updateBusinessProfileBanner();
     updateLoginDbStatus();
   }
@@ -1329,6 +1381,7 @@ WHERE id = 'main_store';`;
     try {
       state.settings.lastModified = Date.now();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.clients));
+      localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(state.expenses || []));
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
     } catch (e) {
       console.error('Error saving data to local storage:', e);
@@ -1390,7 +1443,7 @@ WHERE id = 'main_store';`;
     }
 
     state.activeView = viewName;
-    ['dashboard', 'clients', 'client-detail', 'matrix'].forEach(v => {
+    ['dashboard', 'clients', 'client-detail', 'matrix', 'payments'].forEach(v => {
       const el = document.getElementById(`view-${v}`);
       if (el) el.classList.add('hidden');
     });
@@ -1402,8 +1455,9 @@ WHERE id = 'main_store';`;
     const navDashboard = document.getElementById('nav-dashboard');
     const navClients = document.getElementById('nav-clients');
     const navMatrix = document.getElementById('nav-matrix');
+    const navPayments = document.getElementById('nav-payments');
 
-    [navDashboard, navClients, navMatrix].forEach(nav => {
+    [navDashboard, navClients, navMatrix, navPayments].forEach(nav => {
       if (!nav) return;
       nav.className =
         'px-3 py-2 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center space-x-1.5';
@@ -1418,11 +1472,15 @@ WHERE id = 'main_store';`;
     } else if (viewName === 'matrix' && navMatrix) {
       navMatrix.className =
         'px-3 py-2 rounded-lg text-sm font-medium transition-colors text-blue-700 bg-blue-50 hover:bg-blue-100 flex items-center space-x-1.5';
+    } else if (viewName === 'payments' && navPayments) {
+      navPayments.className =
+        'px-3 py-2 rounded-lg text-sm font-medium transition-colors text-blue-700 bg-blue-50 hover:bg-blue-100 flex items-center space-x-1.5';
     }
 
     if (viewName === 'dashboard') renderDashboard();
     if (viewName === 'clients') renderClientsList();
     if (viewName === 'matrix') renderMatrixView();
+    if (viewName === 'payments') renderPaymentsView();
     if (viewName === 'client-detail' && state.activeClientId) {
       renderClientDetail(state.activeClientId);
     }
@@ -5033,6 +5091,7 @@ WHERE id = 'main_store';`;
   function exportJSON() {
     const data = {
       clients: state.clients,
+      expenses: state.expenses || [],
       settings: state.settings,
       exportedAt: new Date().toISOString(),
       version: '1.0',
@@ -5057,6 +5116,9 @@ WHERE id = 'main_store';`;
         const parsed = JSON.parse(e.target.result);
         if (parsed.clients && Array.isArray(parsed.clients)) {
           state.clients = parsed.clients;
+          if (Array.isArray(parsed.expenses)) {
+            state.expenses = parsed.expenses;
+          }
           if (parsed.settings) state.settings = { ...state.settings, ...parsed.settings };
           saveData();
           showToast('Data restored successfully!');
@@ -5156,6 +5218,779 @@ WHERE id = 'main_store';`;
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+  }
+
+  // ==================== PAYMENTS & EXPENSES MANAGEMENT ====================
+  function amountToWords(amount) {
+    const num = Math.round(Number(amount) || 0);
+    if (num === 0) return 'Zero Rupees Only';
+    const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+      'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+    function inWords(n) {
+      if (n < 20) return a[n];
+      if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? ' ' + a[n % 10] : '');
+      if (n < 1000) return a[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' and ' + inWords(n % 100) : '');
+      if (n < 100000) return inWords(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + inWords(n % 1000) : '');
+      if (n < 10000000) return inWords(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 ? ' ' + inWords(n % 100000) : '');
+      return inWords(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 ? ' ' + inWords(n % 10000000) : '');
+    }
+
+    return (inWords(num).trim() + ' Rupees Only');
+  }
+
+  function renderPaymentsView() {
+    if (!Array.isArray(state.expenses)) state.expenses = [];
+
+    // 1. Calculate KPI Metrics
+    let totalOutflow = 0;
+    let employeeTotal = 0;
+    let employeeCount = 0;
+    let officeTotal = 0;
+    let officeCount = 0;
+    let otherTotal = 0;
+    let otherCount = 0;
+
+    state.expenses.forEach(e => {
+      const amt = Number(e.amount) || 0;
+      totalOutflow += amt;
+      if (e.category === 'employee') {
+        employeeTotal += amt;
+        employeeCount++;
+      } else if (e.category === 'office') {
+        officeTotal += amt;
+        officeCount++;
+      } else {
+        otherTotal += amt;
+        otherCount++;
+      }
+    });
+
+    const totalEl = document.getElementById('exp-total-outflow');
+    const totalCountEl = document.getElementById('exp-total-count');
+    const empEl = document.getElementById('exp-total-employee');
+    const empCountEl = document.getElementById('exp-employee-count');
+    const offEl = document.getElementById('exp-total-office');
+    const offCountEl = document.getElementById('exp-office-count');
+    const othEl = document.getElementById('exp-total-other');
+    const othCountEl = document.getElementById('exp-other-count');
+
+    if (totalEl) totalEl.textContent = formatCurrency(totalOutflow);
+    if (totalCountEl) totalCountEl.textContent = `${state.expenses.length} transaction${state.expenses.length === 1 ? '' : 's'} recorded`;
+    if (empEl) empEl.textContent = formatCurrency(employeeTotal);
+    if (empCountEl) empCountEl.textContent = `${employeeCount} salary payout${employeeCount === 1 ? '' : 's'}`;
+    if (offEl) offEl.textContent = formatCurrency(officeTotal);
+    if (offCountEl) offCountEl.textContent = `${officeCount} office expense${officeCount === 1 ? '' : 's'}`;
+    if (othEl) othEl.textContent = formatCurrency(otherTotal);
+    if (othCountEl) othCountEl.textContent = `${otherCount} other overhead${otherCount === 1 ? '' : 's'}`;
+
+    // Update Nav Badge
+    const navBadge = document.getElementById('nav-expense-count');
+    if (navBadge) {
+      navBadge.textContent = state.expenses.length;
+      if (state.expenses.length > 0) navBadge.classList.remove('hidden');
+      else navBadge.classList.add('hidden');
+    }
+
+    // Update Category Pill Badges
+    const badgeAll = document.getElementById('exp-badge-all');
+    const badgeEmp = document.getElementById('exp-badge-employee');
+    const badgeOff = document.getElementById('exp-badge-office');
+    const badgeOth = document.getElementById('exp-badge-other');
+    if (badgeAll) badgeAll.textContent = state.expenses.length;
+    if (badgeEmp) badgeEmp.textContent = employeeCount;
+    if (badgeOff) badgeOff.textContent = officeCount;
+    if (badgeOth) badgeOth.textContent = otherCount;
+
+    // Filter active pill styles
+    const cat = state.expenseFilter?.category || 'all';
+    ['all', 'employee', 'office', 'other'].forEach(c => {
+      const btn = document.getElementById(`exp-filter-btn-${c}`);
+      if (!btn) return;
+      if (c === cat) {
+        btn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-blue-50 text-blue-700 border border-blue-200';
+      } else {
+        btn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-600 hover:text-slate-900 hover:bg-slate-100';
+      }
+    });
+
+    // 2. Filter Rows
+    let list = [...state.expenses];
+
+    // Filter by Category
+    if (cat !== 'all') {
+      list = list.filter(e => e.category === cat);
+    }
+
+    // Filter by Date Range
+    const from = state.expenseFilter?.from;
+    const to = state.expenseFilter?.to;
+    if (from) {
+      list = list.filter(e => e.date >= from);
+    }
+    if (to) {
+      list = list.filter(e => e.date <= to);
+    }
+
+    // Filter by Search Query
+    const query = (state.expenseFilter?.search || '').trim().toLowerCase();
+    if (query) {
+      list = list.filter(e => {
+        const title = (e.title || '').toLowerCase();
+        const payee = (e.payee || '').toLowerCase();
+        const catName = (e.category || '').toLowerCase();
+        const subcat = (e.subcategory || '').toLowerCase();
+        const role = (e.employeeRole || '').toLowerCase();
+        const bill = (e.billNumber || '').toLowerCase();
+        const ref = (e.reference || '').toLowerCase();
+        const method = (e.method || '').toLowerCase();
+        const notes = (e.notes || '').toLowerCase();
+        return (
+          title.includes(query) ||
+          payee.includes(query) ||
+          catName.includes(query) ||
+          subcat.includes(query) ||
+          role.includes(query) ||
+          bill.includes(query) ||
+          ref.includes(query) ||
+          method.includes(query) ||
+          notes.includes(query)
+        );
+      });
+    }
+
+    // Sort by Date Descending (newest first)
+    list.sort((a, b) => {
+      const dComp = (b.date || '').localeCompare(a.date || '');
+      if (dComp !== 0) return dComp;
+      return (b.createdAt || '').localeCompare(a.createdAt || '');
+    });
+
+    // Render Table
+    const tbody = document.getElementById('expenses-table-body');
+    const emptyState = document.getElementById('expenses-empty-state');
+    if (!tbody) return;
+
+    if (list.length === 0) {
+      tbody.innerHTML = '';
+      if (emptyState) emptyState.classList.remove('hidden');
+      return;
+    }
+
+    if (emptyState) emptyState.classList.add('hidden');
+
+    tbody.innerHTML = list.map(e => {
+      let catBadge = '';
+      let payeeDesc = '';
+
+      if (e.category === 'employee') {
+        catBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">👥 Employee</span>`;
+        payeeDesc = `
+          <div class="font-bold text-slate-900">${escapeHtml(e.payee || 'Employee')}</div>
+          <div class="text-[11px] text-slate-500">
+            ${e.employeeRole ? `${escapeHtml(e.employeeRole)} &bull; ` : ''}
+            ${e.salaryMonth ? `Salary: <span class="font-semibold text-slate-700">${formatFullMonthName(e.salaryMonth)}</span> &bull; ` : ''}
+            <span class="text-blue-700 font-medium">${escapeHtml(e.subcategory || 'Salary')}</span>
+          </div>
+        `;
+      } else if (e.category === 'office') {
+        catBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">🏢 Office</span>`;
+        payeeDesc = `
+          <div class="font-bold text-slate-900">${escapeHtml(e.subcategory || 'Office Expense')}</div>
+          <div class="text-[11px] text-slate-500">
+            ${e.payee ? `Payee: <span class="font-medium text-slate-700">${escapeHtml(e.payee)}</span>` : ''}
+            ${e.billNumber ? ` &bull; Bill #${escapeHtml(e.billNumber)}` : ''}
+          </div>
+        `;
+      } else {
+        catBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">📋 Other</span>`;
+        payeeDesc = `
+          <div class="font-bold text-slate-900">${escapeHtml(e.title || e.subcategory || 'Other Expense')}</div>
+          <div class="text-[11px] text-slate-500">
+            ${e.payee ? `Payee: <span class="font-medium text-slate-700">${escapeHtml(e.payee)}</span> &bull; ` : ''}
+            <span class="text-purple-700 font-medium">${escapeHtml(e.subcategory || 'Misc')}</span>
+          </div>
+        `;
+      }
+
+      return `
+        <tr class="hover:bg-slate-50/80 transition group">
+          <td class="py-3 px-4 font-semibold text-slate-800 whitespace-nowrap">
+            ${formatDate(e.date)}
+          </td>
+          <td class="py-3 px-4 whitespace-nowrap">
+            ${catBadge}
+          </td>
+          <td class="py-3 px-4">
+            ${payeeDesc}
+          </td>
+          <td class="py-3 px-4 text-right whitespace-nowrap">
+            <span class="font-black text-rose-600 text-sm">- ${formatCurrency(e.amount)}</span>
+          </td>
+          <td class="py-3 px-4 whitespace-nowrap">
+            <span class="inline-block px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700">
+              ${escapeHtml(e.method || 'Cash')}
+            </span>
+          </td>
+          <td class="py-3 px-4 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+            ${escapeHtml(e.reference || e.billNumber || '--')}
+          </td>
+          <td class="py-3 px-4 text-slate-500 text-xs max-w-xs truncate" title="${escapeHtml(e.notes || '')}">
+            ${escapeHtml(e.notes || '--')}
+          </td>
+          <td class="py-3 px-4 text-center whitespace-nowrap">
+            <div class="flex items-center justify-center gap-1.5">
+              <button onclick="app.viewExpenseVoucher('${e.id}')" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="View / Print Payment Voucher">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+              </button>
+              <button onclick="app.openRecordExpenseModal('${e.id}')" class="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg transition" title="Edit Expense">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              </button>
+              <button onclick="app.deleteExpense('${e.id}')" class="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition" title="Delete Expense">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function setExpenseCategoryFilter(category) {
+    if (!state.expenseFilter) state.expenseFilter = {};
+    state.expenseFilter.category = category;
+    renderPaymentsView();
+  }
+
+  function onExpenseSearchChange(query) {
+    if (!state.expenseFilter) state.expenseFilter = {};
+    state.expenseFilter.search = query;
+    renderPaymentsView();
+  }
+
+  function onExpensePresetChange(preset) {
+    if (!state.expenseFilter) state.expenseFilter = {};
+    state.expenseFilter.preset = preset;
+    const range = getPresetDateRange(preset);
+    state.expenseFilter.from = range.from;
+    state.expenseFilter.to = range.to;
+
+    const fromEl = document.getElementById('exp-from-date');
+    const toEl = document.getElementById('exp-to-date');
+    if (fromEl) fromEl.value = range.from;
+    if (toEl) toEl.value = range.to;
+
+    renderPaymentsView();
+  }
+
+  function applyExpenseCustomDates() {
+    if (!state.expenseFilter) state.expenseFilter = {};
+    const fromEl = document.getElementById('exp-from-date');
+    const toEl = document.getElementById('exp-to-date');
+    state.expenseFilter.from = fromEl ? fromEl.value : '';
+    state.expenseFilter.to = toEl ? toEl.value : '';
+    state.expenseFilter.preset = 'custom';
+    const presetSelect = document.getElementById('exp-date-preset');
+    if (presetSelect) presetSelect.value = 'custom';
+    renderPaymentsView();
+  }
+
+  function resetExpenseFilter() {
+    state.expenseFilter = { category: 'all', search: '', preset: 'all', from: '', to: '' };
+    const searchEl = document.getElementById('exp-search-input');
+    const presetSelect = document.getElementById('exp-date-preset');
+    const fromEl = document.getElementById('exp-from-date');
+    const toEl = document.getElementById('exp-to-date');
+    if (searchEl) searchEl.value = '';
+    if (presetSelect) presetSelect.value = 'all';
+    if (fromEl) fromEl.value = '';
+    if (toEl) toEl.value = '';
+    renderPaymentsView();
+  }
+
+  function onExpenseCategorySelect(cat) {
+    ['employee', 'office', 'other'].forEach(c => {
+      const container = document.getElementById(`expense-fields-${c}`);
+      const label = document.getElementById(`exp-cat-label-${c}`);
+      if (container) {
+        if (c === cat) container.classList.remove('hidden');
+        else container.classList.add('hidden');
+      }
+      if (label) {
+        if (c === cat) {
+          label.className = 'relative flex flex-col p-3 rounded-xl border-2 border-blue-500 bg-blue-50/40 cursor-pointer transition text-center select-none';
+        } else {
+          label.className = 'relative flex flex-col p-3 rounded-xl border-2 border-slate-200 bg-white cursor-pointer transition text-center select-none';
+        }
+      }
+    });
+  }
+
+  function onOfficeSubcatChange(value) {
+    const customInput = document.getElementById('expense-office-custom-subcat');
+    if (customInput) {
+      if (value === 'custom') customInput.classList.remove('hidden');
+      else customInput.classList.add('hidden');
+    }
+  }
+
+  function openRecordExpenseModal(expenseId = null) {
+    const editIdInput = document.getElementById('expense-edit-id');
+    const titleEl = document.getElementById('expense-modal-title');
+    const submitBtn = document.getElementById('expense-submit-btn');
+
+    // Populate previous employee names in suggestions
+    const datalist = document.getElementById('employee-suggestions');
+    if (datalist && Array.isArray(state.expenses)) {
+      const uniqueNames = [...new Set(state.expenses.filter(e => e.category === 'employee' && e.payee).map(e => e.payee))];
+      datalist.innerHTML = uniqueNames.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
+    }
+
+    if (expenseId) {
+      const exp = (state.expenses || []).find(e => e.id === expenseId);
+      if (!exp) {
+        showToast('Expense record not found', true);
+        return;
+      }
+      state.activeExpenseId = exp.id;
+      if (editIdInput) editIdInput.value = exp.id;
+      if (titleEl) titleEl.innerHTML = `<span>✏️</span> <span>Edit Payment / Expense</span>`;
+      if (submitBtn) submitBtn.innerHTML = `<span>💾 Update Payment</span>`;
+
+      // Set category radio
+      const catRadio = document.querySelector(`input[name="expense-main-category"][value="${exp.category}"]`);
+      if (catRadio) catRadio.checked = true;
+      onExpenseCategorySelect(exp.category);
+
+      // Fill category fields
+      if (exp.category === 'employee') {
+        const nameEl = document.getElementById('expense-emp-name');
+        const roleEl = document.getElementById('expense-emp-role');
+        const monthEl = document.getElementById('expense-emp-month');
+        const typeEl = document.getElementById('expense-emp-type');
+        if (nameEl) nameEl.value = exp.payee || '';
+        if (roleEl) roleEl.value = exp.employeeRole || '';
+        if (monthEl) monthEl.value = exp.salaryMonth || '';
+        if (typeEl) typeEl.value = exp.subcategory || 'Monthly Salary';
+      } else if (exp.category === 'office') {
+        const subcatEl = document.getElementById('expense-office-subcat');
+        const customSubcatEl = document.getElementById('expense-office-custom-subcat');
+        const payeeEl = document.getElementById('expense-office-payee');
+        const billEl = document.getElementById('expense-office-bill-no');
+        if (payeeEl) payeeEl.value = exp.payee || '';
+        if (billEl) billEl.value = exp.billNumber || '';
+
+        const knownOptions = ['Office Rent', 'Electricity Bill', 'Internet & Broadband', 'Stationery & Printing', 'Tea, Coffee & Pantry', 'Cleaning & Housekeeping', 'Software & Cloud Subscriptions', 'Water Supply', 'Repairs & Maintenance', 'Furniture & Equipment'];
+        if (knownOptions.includes(exp.subcategory)) {
+          if (subcatEl) subcatEl.value = exp.subcategory;
+          if (customSubcatEl) { customSubcatEl.value = ''; customSubcatEl.classList.add('hidden'); }
+        } else {
+          if (subcatEl) subcatEl.value = 'custom';
+          if (customSubcatEl) { customSubcatEl.value = exp.subcategory || ''; customSubcatEl.classList.remove('hidden'); }
+        }
+      } else {
+        const titleInput = document.getElementById('expense-other-title');
+        const tagEl = document.getElementById('expense-other-tag');
+        const payeeEl = document.getElementById('expense-other-payee');
+        if (titleInput) titleInput.value = exp.title || '';
+        if (tagEl) tagEl.value = exp.subcategory || 'Miscellaneous';
+        if (payeeEl) payeeEl.value = exp.payee || '';
+      }
+
+      // Universal fields
+      const amtInput = document.getElementById('expense-amount-input');
+      const dateInput = document.getElementById('expense-date-input');
+      const methodInput = document.getElementById('expense-method-input');
+      const refInput = document.getElementById('expense-ref-input');
+      const notesInput = document.getElementById('expense-notes-input');
+
+      if (amtInput) amtInput.value = exp.amount || '';
+      if (dateInput) dateInput.value = exp.date || getTodayDate();
+      if (methodInput) methodInput.value = exp.method || 'UPI / PhonePe / GPay';
+      if (refInput) refInput.value = exp.reference || '';
+      if (notesInput) notesInput.value = exp.notes || '';
+
+    } else {
+      // New Expense
+      state.activeExpenseId = null;
+      if (editIdInput) editIdInput.value = '';
+      if (titleEl) titleEl.innerHTML = `<span>💸</span> <span>Record Outgoing Payment / Expense</span>`;
+      if (submitBtn) submitBtn.innerHTML = `<span>💾 Save Outgoing Payment</span>`;
+
+      // Default category is employee or whatever is currently filtered
+      const defaultCat = (state.expenseFilter?.category && state.expenseFilter?.category !== 'all') ? state.expenseFilter.category : 'employee';
+      const catRadio = document.querySelector(`input[name="expense-main-category"][value="${defaultCat}"]`);
+      if (catRadio) catRadio.checked = true;
+      onExpenseCategorySelect(defaultCat);
+
+      // Reset fields
+      const empName = document.getElementById('expense-emp-name');
+      const empRole = document.getElementById('expense-emp-role');
+      const empMonth = document.getElementById('expense-emp-month');
+      const empType = document.getElementById('expense-emp-type');
+      if (empName) empName.value = '';
+      if (empRole) empRole.value = '';
+      if (empMonth) empMonth.value = getLastMonth();
+      if (empType) empType.value = 'Monthly Salary';
+
+      const offSubcat = document.getElementById('expense-office-subcat');
+      const offCustom = document.getElementById('expense-office-custom-subcat');
+      const offPayee = document.getElementById('expense-office-payee');
+      const offBill = document.getElementById('expense-office-bill-no');
+      if (offSubcat) offSubcat.value = 'Office Rent';
+      if (offCustom) { offCustom.value = ''; offCustom.classList.add('hidden'); }
+      if (offPayee) offPayee.value = '';
+      if (offBill) offBill.value = '';
+
+      const othTitle = document.getElementById('expense-other-title');
+      const othTag = document.getElementById('expense-other-tag');
+      const othPayee = document.getElementById('expense-other-payee');
+      if (othTitle) othTitle.value = '';
+      if (othTag) othTag.value = 'Travel & Conveyance';
+      if (othPayee) othPayee.value = '';
+
+      const amtInput = document.getElementById('expense-amount-input');
+      const dateInput = document.getElementById('expense-date-input');
+      const methodInput = document.getElementById('expense-method-input');
+      const refInput = document.getElementById('expense-ref-input');
+      const notesInput = document.getElementById('expense-notes-input');
+
+      if (amtInput) amtInput.value = '';
+      if (dateInput) dateInput.value = getTodayDate();
+      if (methodInput) methodInput.value = 'UPI / PhonePe / GPay';
+      if (refInput) refInput.value = '';
+      if (notesInput) notesInput.value = '';
+    }
+
+    openModal('recordExpenseModal');
+  }
+
+  async function handleSaveExpense(event) {
+    if (event) event.preventDefault();
+
+    const editId = (document.getElementById('expense-edit-id')?.value || '').trim();
+    const catRadio = document.querySelector('input[name="expense-main-category"]:checked');
+    const category = catRadio ? catRadio.value : 'employee';
+
+    const amtVal = parseFloat(document.getElementById('expense-amount-input')?.value || '0');
+    if (isNaN(amtVal) || amtVal <= 0) {
+      showToast('Please enter a valid expense amount greater than 0', true);
+      return;
+    }
+
+    const dateVal = (document.getElementById('expense-date-input')?.value || '').trim() || getTodayDate();
+    const methodVal = (document.getElementById('expense-method-input')?.value || '').trim() || 'UPI';
+    const refVal = (document.getElementById('expense-ref-input')?.value || '').trim();
+    const notesVal = (document.getElementById('expense-notes-input')?.value || '').trim();
+
+    let payeeVal = '';
+    let titleVal = '';
+    let subcatVal = '';
+    let empRoleVal = '';
+    let empMonthVal = '';
+    let billNoVal = '';
+
+    if (category === 'employee') {
+      payeeVal = (document.getElementById('expense-emp-name')?.value || '').trim();
+      if (!payeeVal) {
+        showToast('Please enter employee name', true);
+        document.getElementById('expense-emp-name')?.focus();
+        return;
+      }
+      empRoleVal = (document.getElementById('expense-emp-role')?.value || '').trim();
+      empMonthVal = (document.getElementById('expense-emp-month')?.value || '').trim();
+      subcatVal = (document.getElementById('expense-emp-type')?.value || '').trim() || 'Monthly Salary';
+      titleVal = `${payeeVal} - ${subcatVal}${empMonthVal ? ` (${formatFullMonthName(empMonthVal)})` : ''}`;
+    } else if (category === 'office') {
+      const offSelect = document.getElementById('expense-office-subcat')?.value || 'Office Rent';
+      if (offSelect === 'custom') {
+        subcatVal = (document.getElementById('expense-office-custom-subcat')?.value || '').trim() || 'Office Expense';
+      } else {
+        subcatVal = offSelect;
+      }
+      payeeVal = (document.getElementById('expense-office-payee')?.value || '').trim();
+      billNoVal = (document.getElementById('expense-office-bill-no')?.value || '').trim();
+      titleVal = `${subcatVal}${payeeVal ? ` (${payeeVal})` : ''}`;
+    } else {
+      titleVal = (document.getElementById('expense-other-title')?.value || '').trim();
+      if (!titleVal) {
+        showToast('Please enter expense title or description', true);
+        document.getElementById('expense-other-title')?.focus();
+        return;
+      }
+      subcatVal = (document.getElementById('expense-other-tag')?.value || '').trim() || 'Miscellaneous';
+      payeeVal = (document.getElementById('expense-other-payee')?.value || '').trim();
+    }
+
+    if (!Array.isArray(state.expenses)) state.expenses = [];
+
+    if (editId) {
+      // Update existing expense
+      const idx = state.expenses.findIndex(e => e.id === editId);
+      if (idx !== -1) {
+        state.expenses[idx] = {
+          ...state.expenses[idx],
+          category,
+          subcategory: subcatVal,
+          title: titleVal,
+          payee: payeeVal,
+          amount: amtVal,
+          date: dateVal,
+          method: methodVal,
+          reference: refVal,
+          notes: notesVal,
+          employeeRole: empRoleVal,
+          salaryMonth: empMonthVal,
+          billNumber: billNoVal,
+          updatedAt: new Date().toISOString(),
+        };
+        showToast(`✅ Payment "${titleVal}" updated successfully!`);
+      }
+    } else {
+      // Create new expense
+      const newExp = {
+        id: 'exp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+        category,
+        subcategory: subcatVal,
+        title: titleVal,
+        payee: payeeVal,
+        amount: amtVal,
+        date: dateVal,
+        method: methodVal,
+        reference: refVal,
+        notes: notesVal,
+        employeeRole: empRoleVal,
+        salaryMonth: empMonthVal,
+        billNumber: billNoVal,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      state.expenses.unshift(newExp);
+      showToast(`✅ Payment of ${formatCurrency(amtVal)} recorded successfully!`);
+    }
+
+    closeModal('recordExpenseModal');
+    renderPaymentsView();
+    await saveData(true);
+  }
+
+  async function deleteExpense(expenseId) {
+    const exp = (state.expenses || []).find(e => e.id === expenseId);
+    if (!exp) return;
+    const desc = exp.title || exp.payee || 'this payment';
+    if (confirm(`Are you sure you want to delete payment record "${desc}" (${formatCurrency(exp.amount)})?`)) {
+      state.expenses = state.expenses.filter(e => e.id !== expenseId);
+      renderPaymentsView();
+      await saveData(true);
+      showToast(`Payment record deleted`);
+    }
+  }
+
+  function viewExpenseVoucher(expenseId) {
+    const exp = (state.expenses || []).find(e => e.id === expenseId);
+    if (!exp) {
+      showToast('Expense record not found', true);
+      return;
+    }
+    state.activeExpenseId = exp.id;
+
+    const voucherContainer = document.getElementById('printable-voucher-content');
+    if (!voucherContainer) return;
+
+    const voucherNum = 'VCH-' + (exp.date ? exp.date.replace(/-/g, '') : '00') + '-' + exp.id.slice(-4).toUpperCase();
+    const biz = state.settings || {};
+    const bizName = biz.businessName || 'Business Services & Solutions';
+
+    let catLabel = 'Payment / Expense';
+    if (exp.category === 'employee') catLabel = 'Employee Salary Disbursement';
+    else if (exp.category === 'office') catLabel = 'Office Operational Expense';
+    else catLabel = 'General Business Expense';
+
+    voucherContainer.innerHTML = `
+      <div class="space-y-6 text-slate-800">
+        <!-- Voucher Header -->
+        <div class="flex justify-between items-start border-b-2 border-slate-900 pb-5">
+          <div>
+            <h2 class="text-2xl font-black text-slate-900 tracking-tight">${escapeHtml(bizName)}</h2>
+            ${biz.businessAddress ? `<p class="text-xs text-slate-600 mt-1">${escapeHtml(biz.businessAddress)}</p>` : ''}
+            <div class="text-xs text-slate-500 mt-0.5 flex flex-wrap gap-x-3">
+              ${biz.businessPhone ? `<span>Phone: ${escapeHtml(biz.businessPhone)}</span>` : ''}
+              ${biz.businessEmail ? `<span>Email: ${escapeHtml(biz.businessEmail)}</span>` : ''}
+            </div>
+          </div>
+          <div class="text-right">
+            <span class="inline-block px-3 py-1 bg-slate-900 text-white text-xs font-bold uppercase tracking-wider rounded-lg">
+              Payment Voucher
+            </span>
+            <div class="mt-2 text-xs">
+              <span class="text-slate-500">Voucher No:</span> <strong class="font-mono text-slate-900">${voucherNum}</strong>
+            </div>
+            <div class="text-xs">
+              <span class="text-slate-500">Date:</span> <strong class="text-slate-900">${formatDate(exp.date)}</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Paid To & Category Details -->
+        <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+          <div>
+            <span class="text-slate-500 font-medium block uppercase text-[10px] tracking-wider">Paid To / Beneficiary:</span>
+            <strong class="text-sm text-slate-900 block mt-0.5">${escapeHtml(exp.payee || exp.title || 'Bearer')}</strong>
+            ${exp.employeeRole ? `<span class="text-slate-600">Designation: ${escapeHtml(exp.employeeRole)}</span>` : ''}
+            ${exp.billNumber ? `<span class="text-slate-600">Bill / Inv #: ${escapeHtml(exp.billNumber)}</span>` : ''}
+          </div>
+          <div class="text-right sm:text-left">
+            <span class="text-slate-500 font-medium block uppercase text-[10px] tracking-wider">Category / Payout Type:</span>
+            <strong class="text-sm text-slate-900 block mt-0.5">${catLabel}</strong>
+            <span class="text-slate-600">${escapeHtml(exp.subcategory || '')}</span>
+            ${exp.salaryMonth ? `<span class="block text-blue-700 font-semibold">For Period: ${formatFullMonthName(exp.salaryMonth)}</span>` : ''}
+          </div>
+        </div>
+
+        <!-- Particulars Table -->
+        <div class="border border-slate-200 rounded-xl overflow-hidden">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-100 font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200 text-[11px]">
+              <tr>
+                <th class="py-3 px-4">Particulars / Description</th>
+                <th class="py-3 px-4">Payment Method</th>
+                <th class="py-3 px-4">Reference #</th>
+                <th class="py-3 px-4 text-right">Amount (${state.settings.currency})</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr>
+                <td class="py-3 px-4 font-semibold text-slate-900">
+                  ${escapeHtml(exp.title || exp.subcategory || 'Disbursement')}
+                  ${exp.notes ? `<div class="text-[11px] text-slate-500 font-normal italic mt-0.5">Note: ${escapeHtml(exp.notes)}</div>` : ''}
+                </td>
+                <td class="py-3 px-4 text-slate-700 font-medium">
+                  ${escapeHtml(exp.method || 'Cash')}
+                </td>
+                <td class="py-3 px-4 font-mono text-slate-600">
+                  ${escapeHtml(exp.reference || exp.billNumber || '--')}
+                </td>
+                <td class="py-3 px-4 text-right font-black text-rose-700 text-sm">
+                  ${formatCurrency(exp.amount)}
+                </td>
+              </tr>
+            </tbody>
+            <tfoot class="bg-slate-50 font-bold border-t border-slate-200 text-xs">
+              <tr class="bg-slate-100 text-slate-900">
+                <td colspan="3" class="py-2.5 px-4 text-right uppercase text-[11px] font-black">Total Paid:</td>
+                <td class="py-2.5 px-4 text-right font-black text-rose-700 text-base">${formatCurrency(exp.amount)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <!-- Amount in Words -->
+        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
+          <span class="text-slate-500 font-medium">Amount in Words:</span>
+          <strong class="text-slate-900 ml-1 italic font-semibold">${amountToWords(exp.amount)}</strong>
+        </div>
+
+        <!-- Declarations & Signatures -->
+        <div class="pt-8 border-t border-slate-200 grid grid-cols-3 gap-6 text-center text-xs text-slate-600">
+          <div>
+            <div class="border-b border-slate-400 pb-10"></div>
+            <p class="mt-1 font-bold text-slate-800">Prepared By</p>
+          </div>
+          <div>
+            <div class="border-b border-slate-400 pb-10"></div>
+            <p class="mt-1 font-bold text-slate-800">Authorized Signatory</p>
+            <p class="text-[10px] text-slate-400">${escapeHtml(bizName)}</p>
+          </div>
+          <div>
+            <div class="border-b border-slate-400 pb-10"></div>
+            <p class="mt-1 font-bold text-slate-800">Receiver's Signature</p>
+          </div>
+        </div>
+
+        <p class="text-[10px] text-center text-slate-400 pt-2">
+          Subject to realization &bull; Official Computer-Generated Payment Voucher &bull; ClientLedger Pro
+        </p>
+      </div>
+    `;
+
+    openModal('expenseVoucherModal');
+  }
+
+  function sendExpenseVoucherWhatsApp() {
+    const exp = (state.expenses || []).find(e => e.id === state.activeExpenseId);
+    if (!exp) {
+      showToast('Expense record not found', true);
+      return;
+    }
+    const biz = state.settings || {};
+    const bizName = biz.businessName || 'Our Business';
+
+    let msg = `*PAYMENT DISBURSEMENT VOUCHER*\n`;
+    msg += `------------------------------\n`;
+    msg += `*From:* ${bizName}\n`;
+    msg += `*Paid To:* ${exp.payee || exp.title || 'Recipient'}\n`;
+    if (exp.category === 'employee' && exp.salaryMonth) {
+      msg += `*Salary Month:* ${formatFullMonthName(exp.salaryMonth)}\n`;
+    }
+    msg += `*Category:* ${exp.category.toUpperCase()} - ${exp.subcategory || ''}\n`;
+    msg += `*Amount Paid:* ${formatCurrency(exp.amount)}\n`;
+    msg += `*Date:* ${formatDate(exp.date)}\n`;
+    msg += `*Payment Method:* ${exp.method || 'Cash'}\n`;
+    if (exp.reference) msg += `*Reference / UTR:* ${exp.reference}\n`;
+    if (exp.notes) msg += `*Notes:* ${exp.notes}\n`;
+    msg += `------------------------------\n`;
+    msg += `_Thank you for your service & association._`;
+
+    const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+  }
+
+  function exportExpensesToCSV() {
+    if (!Array.isArray(state.expenses) || state.expenses.length === 0) {
+      showToast('No expense records to export', true);
+      return;
+    }
+
+    const headers = [
+      'Date',
+      'Category',
+      'Subcategory',
+      'Payee / Beneficiary',
+      'Designation / Bill No',
+      'Salary Month',
+      'Amount',
+      'Payment Method',
+      'Reference / UTR',
+      'Notes'
+    ];
+
+    const rows = state.expenses.map(e => [
+      `"${e.date || ''}"`,
+      `"${e.category || ''}"`,
+      `"${(e.subcategory || '').replace(/"/g, '""')}"`,
+      `"${(e.payee || '').replace(/"/g, '""')}"`,
+      `"${(e.employeeRole || e.billNumber || '').replace(/"/g, '""')}"`,
+      `"${e.salaryMonth || ''}"`,
+      Number(e.amount) || 0,
+      `"${(e.method || '').replace(/"/g, '""')}"`,
+      `"${(e.reference || '').replace(/"/g, '""')}"`,
+      `"${(e.notes || '').replace(/"/g, '""')}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Expenses_Report_${getTodayDate()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    showToast('Expenses CSV exported successfully!');
+  }
+
+  function printExpensesSummary() {
+    window.print();
   }
 
   // ==================== AUTHENTICATION & LOGIN ====================
@@ -5293,6 +6128,8 @@ WHERE id = 'main_store';`;
       'overrideMonthModal',
       'editClientModal',
       'holdClientModal',
+      'recordExpenseModal',
+      'expenseVoucherModal',
       'printStatementModal',
       'paymentReceiptModal',
       'pendingInvoiceModal',
@@ -5412,6 +6249,22 @@ WHERE id = 'main_store';`;
     stopBatchWhatsAppQueue,
     copyBatchWhatsAppSummary,
     toggleBatchWaSamplePreview,
+    renderPaymentsView,
+    setExpenseCategoryFilter,
+    onExpenseSearchChange,
+    onExpensePresetChange,
+    applyExpenseCustomDates,
+    resetExpenseFilter,
+    openRecordExpenseModal,
+    onExpenseCategorySelect,
+    onOfficeSubcatChange,
+    handleSaveExpense,
+    deleteExpense,
+    viewExpenseVoucher,
+    sendExpenseVoucherWhatsApp,
+    exportExpensesToCSV,
+    printExpensesSummary,
+    amountToWords,
     changeCurrency,
     exportJSON,
     importJSON,
@@ -5423,6 +6276,12 @@ WHERE id = 'main_store';`;
     checkCloudSync,
     get activeClientId() {
       return state.activeClientId;
+    },
+    get expenses() {
+      return state.expenses;
+    },
+    get activeExpenseId() {
+      return state.activeExpenseId;
     },
   };
 

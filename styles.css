@@ -84,12 +84,15 @@
   #view-clients,
   #view-client-detail,
   #view-matrix,
+  #view-payments,
   #addClientModal,
   #recordPaymentModal,
   #editPaymentModal,
   #overrideMonthModal,
   #editClientModal,
   #holdClientModal,
+  #recordExpenseModal,
+  #batchPendingWhatsAppModal,
   #editBusinessProfileModal,
   #cloudDatabaseModal,
   .modal-backdrop,
@@ -100,14 +103,16 @@
   /* Explicitly hide any modal that has the hidden class */
   #printStatementModal.hidden,
   #paymentReceiptModal.hidden,
-  #pendingInvoiceModal.hidden {
+  #pendingInvoiceModal.hidden,
+  #expenseVoucherModal.hidden {
     display: none !important;
   }
 
   /* Make sure ONLY the currently open/active modal content takes the full printable page */
   #printStatementModal:not(.hidden),
   #paymentReceiptModal:not(.hidden),
-  #pendingInvoiceModal:not(.hidden) {
+  #pendingInvoiceModal:not(.hidden),
+  #expenseVoucherModal:not(.hidden) {
     position: static !important;
     background: none !important;
     padding: 0 !important;
@@ -117,7 +122,8 @@
 
   #printStatementModal:not(.hidden) > div,
   #paymentReceiptModal:not(.hidden) > div,
-  #pendingInvoiceModal:not(.hidden) > div {
+  #pendingInvoiceModal:not(.hidden) > div,
+  #expenseVoucherModal:not(.hidden) > div {
     max-width: 100% !important;
     box-shadow: none !important;
     border: none !important;

@@ -197,6 +197,11 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             <span class="hidden md:inline">Monthly Matrix</span>
           </button>
+          <button id="nav-payments" onclick="app.showView('payments')" class="px-3 py-2 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center space-x-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+            <span>Payments</span>
+            <span id="nav-expense-count" class="hidden bg-slate-200 text-slate-700 text-xs px-1.5 py-0.2 rounded-full font-semibold">0</span>
+          </button>
         </nav>
 
         <!-- Action Buttons -->
@@ -892,6 +897,181 @@
           <!-- Populated dynamically -->
         </div>
       </div>
+    </div>
+
+    <!-- VIEW 5: PAYMENTS & EXPENSES DASHBOARD -->
+    <div id="view-payments" class="hidden space-y-6">
+
+      <!-- View Header with Title and Action Buttons -->
+      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-500 via-pink-600 to-indigo-600 flex items-center justify-center text-white shadow-sm">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+            </div>
+            <div>
+              <h2 class="text-xl font-bold text-slate-900">Payments &amp; Expenses Dashboard</h2>
+              <p class="text-xs text-slate-500">Record, track and manage all outgoing payments: Employee Salaries, Office Expenses &amp; Other Overheads</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="app.openRecordExpenseModal()" class="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-sm font-semibold shadow-sm transition flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            <span>Record Outgoing Payment</span>
+          </button>
+          <button onclick="app.exportExpensesToCSV()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition flex items-center gap-1.5" title="Export payments and expenses to CSV">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            <span>Export CSV</span>
+          </button>
+          <button onclick="app.printExpensesSummary()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition flex items-center gap-1.5" title="Print expense report">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+            <span>Print Report</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Financial Metrics Summary Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Card 1: Total Outflow -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group hover:border-rose-300 transition">
+          <div class="flex items-center justify-between text-slate-500 mb-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-600">Total Outgoing Payments</span>
+            <span class="p-2 bg-rose-50 text-rose-600 rounded-xl text-sm font-semibold">💸</span>
+          </div>
+          <div id="exp-total-outflow" class="text-2xl font-black text-rose-600 tracking-tight">₹ 0.00</div>
+          <div id="exp-total-count" class="text-xs text-slate-500 mt-1">0 transactions recorded</div>
+        </div>
+
+        <!-- Card 2: Employees -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group hover:border-blue-300 transition">
+          <div class="flex items-center justify-between text-slate-500 mb-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-600">Employee Salaries</span>
+            <span class="p-2 bg-blue-50 text-blue-600 rounded-xl text-sm font-semibold">👥</span>
+          </div>
+          <div id="exp-total-employee" class="text-2xl font-black text-blue-700 tracking-tight">₹ 0.00</div>
+          <div id="exp-employee-count" class="text-xs text-slate-500 mt-1">0 salary payouts</div>
+        </div>
+
+        <!-- Card 3: Office Expenses -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group hover:border-emerald-300 transition">
+          <div class="flex items-center justify-between text-slate-500 mb-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-600">Office Expenses</span>
+            <span class="p-2 bg-emerald-50 text-emerald-600 rounded-xl text-sm font-semibold">🏢</span>
+          </div>
+          <div id="exp-total-office" class="text-2xl font-black text-emerald-700 tracking-tight">₹ 0.00</div>
+          <div id="exp-office-count" class="text-xs text-slate-500 mt-1">Rent, Bills, Internet &amp; Supplies</div>
+        </div>
+
+        <!-- Card 4: Other Expenses -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group hover:border-purple-300 transition">
+          <div class="flex items-center justify-between text-slate-500 mb-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-600">Other Expenses</span>
+            <span class="p-2 bg-purple-50 text-purple-600 rounded-xl text-sm font-semibold">📋</span>
+          </div>
+          <div id="exp-total-other" class="text-2xl font-black text-purple-700 tracking-tight">₹ 0.00</div>
+          <div id="exp-other-count" class="text-xs text-slate-500 mt-1">Travel, Legal &amp; Overheads</div>
+        </div>
+      </div>
+
+      <!-- Filters & Search Toolbar -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <!-- Row 1: Category Filter Pills -->
+        <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button onclick="app.setExpenseCategoryFilter('all')" id="exp-filter-btn-all" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-blue-50 text-blue-700 border border-blue-200">
+              All Expenses (<span id="exp-badge-all">0</span>)
+            </button>
+            <button onclick="app.setExpenseCategoryFilter('employee')" id="exp-filter-btn-employee" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+              👥 Employees (<span id="exp-badge-employee">0</span>)
+            </button>
+            <button onclick="app.setExpenseCategoryFilter('office')" id="exp-filter-btn-office" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+              🏢 Office Expenses (<span id="exp-badge-office">0</span>)
+            </button>
+            <button onclick="app.setExpenseCategoryFilter('other')" id="exp-filter-btn-other" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+              📋 Other Expenses (<span id="exp-badge-other">0</span>)
+            </button>
+          </div>
+
+          <!-- Date Preset Selector -->
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-slate-500 font-medium">Period:</span>
+            <select id="exp-date-preset" onchange="app.onExpensePresetChange(this.value)" class="text-xs bg-slate-50 border border-slate-300 rounded-lg py-1.5 px-2.5 font-medium text-slate-700 focus:ring-2 focus:ring-blue-500">
+              <option value="all">All Time (Cumulative)</option>
+              <option value="this_month">This Month</option>
+              <option value="last_month">Last Month</option>
+              <option value="this_quarter">This Quarter</option>
+              <option value="this_year">This Year</option>
+              <option value="custom">Custom Date Range</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Row 2: Search Input & Custom Date Range -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <!-- Search box -->
+          <div class="relative flex-1">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            </div>
+            <input type="text" id="exp-search-input" oninput="app.onExpenseSearchChange(this.value)" placeholder="Search employee, payee, title, category, reference, or notes..." class="w-full text-xs pl-9 pr-3.5 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+          </div>
+
+          <!-- Custom Date Range Inputs -->
+          <div id="exp-custom-date-container" class="flex flex-wrap items-center gap-2 text-xs">
+            <div class="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 border border-slate-200 rounded-lg">
+              <span class="text-slate-500 font-medium">FROM:</span>
+              <input type="date" id="exp-from-date" class="bg-transparent border-0 text-xs p-0 text-slate-700 focus:ring-0">
+            </div>
+            <div class="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 border border-slate-200 rounded-lg">
+              <span class="text-slate-500 font-medium">TO:</span>
+              <input type="date" id="exp-to-date" class="bg-transparent border-0 text-xs p-0 text-slate-700 focus:ring-0">
+            </div>
+            <button onclick="app.applyExpenseCustomDates()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition">Apply</button>
+            <button onclick="app.resetExpenseFilter()" class="px-2.5 py-1.5 text-slate-500 hover:text-slate-700 rounded-lg font-medium transition">Reset</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Expenses Table Container -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-600">
+            <thead class="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+              <tr>
+                <th class="py-3 px-4">Date</th>
+                <th class="py-3 px-4">Category</th>
+                <th class="py-3 px-4">Payee / Description</th>
+                <th class="py-3 px-4 text-right">Amount</th>
+                <th class="py-3 px-4">Method</th>
+                <th class="py-3 px-4">Ref / Bill #</th>
+                <th class="py-3 px-4">Notes</th>
+                <th class="py-3 px-4 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="expenses-table-body" class="divide-y divide-slate-100 font-normal">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty state -->
+        <div id="expenses-empty-state" class="hidden p-12 text-center">
+          <div class="w-14 h-14 mx-auto rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 text-2xl mb-3">
+            💸
+          </div>
+          <h3 class="text-base font-bold text-slate-800">No outgoing payments recorded yet</h3>
+          <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+            Record your employee salaries, office rent, electricity bills, internet, and other expenses. Every entry safely syncs to your database.
+          </p>
+          <button onclick="app.openRecordExpenseModal()" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm inline-flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            <span>Record First Payment</span>
+          </button>
+        </div>
+      </div>
+
     </div>
 
   </main>
@@ -2110,6 +2290,231 @@
           </div>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL 8: RECORD OUTGOING PAYMENT / EXPENSE -->
+  <div id="recordExpenseModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      
+      <!-- Modal Header -->
+      <div class="bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 px-6 py-4 text-white flex justify-between items-center shrink-0">
+        <div>
+          <h3 id="expense-modal-title" class="font-bold text-base flex items-center gap-2">
+            <span>💸</span> <span>Record Outgoing Payment / Expense</span>
+          </h3>
+          <p class="text-xs text-emerald-100 mt-0.5">Disburse employee salary, pay office expenses, or record overheads</p>
+        </div>
+        <button type="button" onclick="app.closeModal('recordExpenseModal')" class="text-white/80 hover:text-white text-xl p-1 rounded-lg hover:bg-white/10 transition">&times;</button>
+      </div>
+
+      <!-- Modal Body Form -->
+      <form id="record-expense-form" onsubmit="app.handleSaveExpense(event)" class="p-6 overflow-y-auto space-y-4 flex-1">
+        <input type="hidden" id="expense-edit-id" value="">
+
+        <!-- Step 1: Select Main Expense Category -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+            Expense Category *
+          </label>
+          <div class="grid grid-cols-3 gap-2.5">
+            <!-- Employees option -->
+            <label class="relative flex flex-col p-3 rounded-xl border-2 border-blue-500 bg-blue-50/40 cursor-pointer transition text-center select-none" id="exp-cat-label-employee">
+              <input type="radio" name="expense-main-category" value="employee" onchange="app.onExpenseCategorySelect('employee')" checked class="sr-only">
+              <span class="text-xl mb-1">👥</span>
+              <span class="text-xs font-bold text-slate-800">Employees</span>
+              <span class="text-[10px] text-slate-500 mt-0.5">Salary &amp; Wages</span>
+            </label>
+
+            <!-- Office Expenses option -->
+            <label class="relative flex flex-col p-3 rounded-xl border-2 border-slate-200 bg-white cursor-pointer transition text-center select-none" id="exp-cat-label-office">
+              <input type="radio" name="expense-main-category" value="office" onchange="app.onExpenseCategorySelect('office')" class="sr-only">
+              <span class="text-xl mb-1">🏢</span>
+              <span class="text-xs font-bold text-slate-800">Office Exp</span>
+              <span class="text-[10px] text-slate-500 mt-0.5">Rent, Bills, Net</span>
+            </label>
+
+            <!-- Other Expenses option -->
+            <label class="relative flex flex-col p-3 rounded-xl border-2 border-slate-200 bg-white cursor-pointer transition text-center select-none" id="exp-cat-label-other">
+              <input type="radio" name="expense-main-category" value="other" onchange="app.onExpenseCategorySelect('other')" class="sr-only">
+              <span class="text-xl mb-1">📋</span>
+              <span class="text-xs font-bold text-slate-800">Others</span>
+              <span class="text-[10px] text-slate-500 mt-0.5">Travel &amp; Misc</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- DYNAMIC FIELDS: 1. EMPLOYEE FIELDS -->
+        <div id="expense-fields-employee" class="space-y-3 bg-blue-50/50 p-4 rounded-xl border border-blue-200">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Employee Name *</label>
+              <input type="text" id="expense-emp-name" placeholder="e.g. Ramesh Kumar" list="employee-suggestions" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+              <datalist id="employee-suggestions">
+                <!-- Dynamically filled with previously entered employee names -->
+              </datalist>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Role / Designation</label>
+              <input type="text" id="expense-emp-role" placeholder="e.g. Senior Accountant / Assistant" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Salary Month / Period</label>
+              <input type="month" id="expense-emp-month" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Payout Type</label>
+              <select id="expense-emp-type" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-medium text-slate-700">
+                <option value="Monthly Salary">Monthly Salary</option>
+                <option value="Salary Advance">Salary Advance</option>
+                <option value="Bonus / Incentive">Bonus / Incentive</option>
+                <option value="Stipend / Daily Wage">Stipend / Daily Wage</option>
+                <option value="Expense Reimbursement">Expense Reimbursement</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- DYNAMIC FIELDS: 2. OFFICE EXPENSE FIELDS -->
+        <div id="expense-fields-office" class="hidden space-y-3 bg-emerald-50/50 p-4 rounded-xl border border-emerald-200">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Expense Type / Item *</label>
+              <select id="expense-office-subcat" onchange="app.onOfficeSubcatChange(this.value)" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-medium text-slate-700">
+                <option value="Office Rent">Office Rent</option>
+                <option value="Electricity Bill">Electricity Bill</option>
+                <option value="Internet & Broadband">Internet &amp; WiFi Broadband</option>
+                <option value="Stationery & Printing">Stationery, Printing &amp; Xerox</option>
+                <option value="Tea, Coffee & Pantry">Tea, Coffee &amp; Pantry</option>
+                <option value="Cleaning & Housekeeping">Cleaning &amp; Housekeeping</option>
+                <option value="Software & Cloud Subscriptions">Software &amp; Cloud Subscriptions</option>
+                <option value="Water Supply">Water Supply / Cans</option>
+                <option value="Repairs & Maintenance">Repairs &amp; Maintenance</option>
+                <option value="Furniture & Equipment">Furniture &amp; Equipment</option>
+                <option value="custom">Other (Enter Custom)</option>
+              </select>
+              <input type="text" id="expense-office-custom-subcat" placeholder="Enter expense item name..." class="hidden mt-2 w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Payee / Vendor / Landlord</label>
+              <input type="text" id="expense-office-payee" placeholder="e.g. Landlord Name / Airtel / BESCOM" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Bill / Invoice Number (Optional)</label>
+            <input type="text" id="expense-office-bill-no" placeholder="e.g. BILL-2026-901 or Account ID" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-mono">
+          </div>
+        </div>
+
+        <!-- DYNAMIC FIELDS: 3. OTHER EXPENSE FIELDS -->
+        <div id="expense-fields-other" class="hidden space-y-3 bg-purple-50/50 p-4 rounded-xl border border-purple-200">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Expense Title / Purpose *</label>
+              <input type="text" id="expense-other-title" placeholder="e.g. Client Travel & Conveyance" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Category / Tag</label>
+              <select id="expense-other-tag" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-medium text-slate-700">
+                <option value="Travel & Conveyance">Travel &amp; Conveyance</option>
+                <option value="Legal & Professional Fees">Legal &amp; Professional Fees</option>
+                <option value="Govt Filing & ROC Fees">Govt Filing &amp; ROC Fees</option>
+                <option value="Marketing & Promotion">Marketing &amp; Promotion</option>
+                <option value="Refreshments & Client Hosting">Refreshments &amp; Client Hosting</option>
+                <option value="Courier & Postage">Courier &amp; Postage</option>
+                <option value="Bank Charges">Bank Charges / Fees</option>
+                <option value="Miscellaneous">Miscellaneous Overhead</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Paid To / Payee Name</label>
+            <input type="text" id="expense-other-payee" placeholder="e.g. Driver / Store Name / Service Provider" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+          </div>
+        </div>
+
+        <!-- UNIVERSAL PAYMENT DETAILS -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Amount Paid (<span class="current-currency-symbol">₹</span>) *</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 font-bold current-currency-symbol">₹</span>
+              <input type="number" step="0.01" min="0.01" id="expense-amount-input" required placeholder="0.00" class="w-full text-sm font-bold pl-8 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-slate-900">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Payment Date *</label>
+            <input type="date" id="expense-date-input" required class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Payment Method *</label>
+            <select id="expense-method-input" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-medium text-slate-700">
+              <option value="UPI / PhonePe / GPay">UPI / PhonePe / GPay</option>
+              <option value="Bank Transfer / NEFT">Bank Transfer / NEFT / IMPS</option>
+              <option value="Cash">Cash</option>
+              <option value="Cheque">Cheque</option>
+              <option value="Debit / Credit Card">Debit / Credit Card</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Reference / UTR / Cheque #</label>
+            <input type="text" id="expense-ref-input" placeholder="e.g. UTR12345678, CHQ-002341" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-mono">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Notes / Description (Optional)</label>
+          <textarea id="expense-notes-input" rows="2" placeholder="e.g. October salary transferred to HDFC account, or office painting advance" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"></textarea>
+        </div>
+
+        <!-- Modal Actions Footer -->
+        <div class="pt-3 border-t border-slate-200 flex justify-end items-center gap-2">
+          <button type="button" onclick="app.closeModal('recordExpenseModal')" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition">Cancel</button>
+          <button type="submit" id="expense-submit-btn" class="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition shadow-sm flex items-center gap-1.5">
+            <span>💾 Save Outgoing Payment</span>
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- MODAL 9: PRINTABLE EXPENSE VOUCHER / DISBURSEMENT RECEIPT -->
+  <div id="expenseVoucherModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      
+      <!-- Modal Header (No Print) -->
+      <div class="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center no-print">
+        <div>
+          <h3 class="font-bold text-slate-900 text-base flex items-center gap-2">
+            <span>🧾</span> <span>Payment Voucher / Disbursement Receipt</span>
+          </h3>
+          <p class="text-xs text-slate-500">Official voucher for employee salary or operational expense payout</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="app.sendExpenseVoucherWhatsApp()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold flex items-center gap-1.5 shadow-sm transition" title="Share payment details via WhatsApp">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+            <span>WhatsApp</span>
+          </button>
+          <button onclick="window.print()" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold flex items-center gap-1.5 shadow-sm transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+            <span>Print / Save PDF</span>
+          </button>
+          <button onclick="app.closeModal('expenseVoucherModal')" class="text-slate-400 hover:text-slate-600 text-lg px-1.5 py-0.5 rounded-lg hover:bg-slate-200 transition">&times;</button>
+        </div>
+      </div>
+
+      <!-- Printable Voucher Area -->
+      <div id="printable-voucher-content" class="p-8 overflow-y-auto flex-1 bg-white print-area">
+        <!-- Rendered dynamically -->
+      </div>
+
     </div>
   </div>
 
