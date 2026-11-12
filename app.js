@@ -1490,8 +1490,17 @@ WHERE id = 'main_store';`;
     }
     if (viewName === 'gstr') {
       const frame = document.getElementById('gstr-frame');
-      if (frame && (!frame.src || frame.src.endsWith('/gstr/index.html') === false)) {
-        frame.src = '/gstr/index.html';
+      if (frame) {
+        if (!frame.src || frame.src === 'about:blank' || !frame.src.includes('gstr/index.html')) {
+          const proto = window.location.protocol;
+          if (proto === 'file:') {
+            frame.src = './gstr/index.html';
+          } else {
+            const p = window.location.pathname || '/';
+            const basePath = p.substring(0, p.lastIndexOf('/') + 1) || '/';
+            frame.src = basePath + 'gstr/index.html';
+          }
+        }
       }
     }
 
