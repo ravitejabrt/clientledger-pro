@@ -230,6 +230,7 @@
 
     updateUiBadge(true, true);
     setupRealtimeSubscription();
+    setTimeout(checkAndAutoSeedRelationalTables, 500);
     return true;
   }
 
@@ -420,6 +421,18 @@
       }
 
       await persistState();
+      syncPeriodConfig(state.periodConfig);
+      if (latestReturnPeriod && state.filings[latestReturnPeriod]) {
+        syncMonthFilingsBatch(latestReturnPeriod, state.filings[latestReturnPeriod]);
+      }
+      if (isJan) {
+        if (state.qrmpFilings['Q4 (OCT - DEC 2026)']) {
+          syncQuarterFilingsBatch('qrmp', 'Q4 (OCT - DEC 2026)', state.qrmpFilings['Q4 (OCT - DEC 2026)']);
+        }
+        if (state.compositionFilings['Q4 (OCT - DEC 2026)']) {
+          syncQuarterFilingsBatch('composition', 'Q4 (OCT - DEC 2026)', state.compositionFilings['Q4 (OCT - DEC 2026)']);
+        }
+      }
       return { success: true, periodConfig: state.periodConfig };
     }
 
@@ -539,6 +552,7 @@
 
       state.filings[month][clientId] = current;
       await persistState();
+      syncSingleMonthlyFiling(month, clientId, current);
       return { success: true, updated: current };
     }
 
@@ -560,6 +574,9 @@
           }
         });
         await persistState();
+        if (state.filings[month]) {
+          syncMonthFilingsBatch(month, state.filings[month]);
+        }
       }
       return { success: true, copiedFrom: prevMonthName, message: `Copied data from ${prevMonthName}!` };
     }
@@ -668,6 +685,7 @@
 
       state.qrmpFilings[quarter][clientId] = current;
       await persistState();
+      syncSingleQrmpFiling(quarter, clientId, current);
       return { success: true, updated: current };
     }
 
@@ -765,6 +783,7 @@
 
       state.compositionFilings[quarter][clientId] = current;
       await persistState();
+      syncSingleCompositionFiling(quarter, clientId, current);
       return { success: true, updated: current };
     }
 
@@ -783,6 +802,9 @@
         if (body.rentAmount !== undefined) c.rentAmount = body.rentAmount.toString().replace(/[^0-9]/g, '');
         if (body.taxableAmount !== undefined) c.taxableAmount = body.taxableAmount.toString().replace(/[^0-9]/g, '');
         await persistState();
+        if (isQrmp) syncSingleQrmpClient(c);
+        else if (isComp) syncSingleCompositionClient(c);
+        else syncSingleMonthlyClient(c);
         return { success: true, client: c };
       }
       throw new Error('Shop not found');
@@ -812,6 +834,9 @@
 
       list.push(newClient);
       await persistState();
+      if (isQrmp) syncSingleQrmpClient(newClient);
+      else if (isComp) syncSingleCompositionClient(newClient);
+      else syncSingleMonthlyClient(newClient);
       return { success: true, client: newClient };
     }
 
@@ -826,6 +851,9 @@
         const deleted = list.splice(idx, 1)[0];
         list.forEach((c, i) => { c.sno = i + 1; });
         await persistState();
+        if (isQrmp) deleteQrmpClientFromDb(id);
+        else if (isComp) deleteCompositionClientFromDb(id);
+        else deleteMonthlyClientFromDb(id);
         return { success: true, message: `Shop "${deleted.name}" deleted`, client: deleted };
       }
       throw new Error('Shop not found');
@@ -1033,9 +1061,13 @@
     if (!supabase || !rows || rows.length === 0) return;
     for (let i = 0; i < rows.length; i += chunkSize) {
       const chunk = rows.slice(i, i + chunkSize);
-      const { error } = await supabase.from(table).upsert(chunk);
-      if (error) {
-        console.warn('[Supabase Sync] Warning on table ' + table + ':', error.message);
+      try {
+        const { error } = await supabase.from(table).upsert(chunk);
+        if (error) {
+          console.warn('[Supabase Sync] Warning on table ' + table + ':', error.message);
+        }
+      } catch (err) {
+        console.warn('[Supabase Sync] Exception on table ' + table + ':', err);
       }
     }
   }
@@ -1048,12 +1080,14 @@
     if (typeof onProgress === 'function') onProgress('Preparing master data...', 5);
 
     // 1. Period Config
-    await supabase.from('period_config').upsert({
-      id: 'config',
-      active_month: state.periodConfig?.activeMonth || 'NOV 2026',
-      entered_january: Boolean(state.periodConfig?.enteredJanuary),
-      updated_at: new Date().toISOString()
-    });
+    try {
+      await supabase.from('gst_period_config').upsert({
+        id: 'config',
+        active_month: state.periodConfig?.activeMonth || 'NOV 2026',
+        entered_january: Boolean(state.periodConfig?.enteredJanuary),
+        updated_at: new Date().toISOString()
+      });
+    } catch (_) {}
 
     // 2. Months
     const monthRows = (state.months || []).map((m, idx) => ({
@@ -1061,7 +1095,7 @@
       name: m.name,
       order_idx: idx
     }));
-    await upsertInChunks('months', monthRows);
+    await upsertInChunks('gst_months', monthRows);
 
     // 3. QRMP Quarters
     const qrmpQRows = (state.qrmpQuarters || []).map((q, idx) => ({
@@ -1072,7 +1106,7 @@
       is_available: q.isAvailable !== false,
       order_idx: idx
     }));
-    await upsertInChunks('qrmp_quarters', qrmpQRows);
+    await upsertInChunks('gst_qrmp_quarters', qrmpQRows);
 
     // 4. Composition Quarters
     const compQRows = (state.compositionQuarters || []).map((q, idx) => ({
@@ -1083,7 +1117,7 @@
       is_available: q.isAvailable !== false,
       order_idx: idx
     }));
-    await upsertInChunks('composition_quarters', compQRows);
+    await upsertInChunks('gst_composition_quarters', compQRows);
 
     if (typeof onProgress === 'function') onProgress('Syncing 63 Monthly Shops...', 25);
     // 5. Monthly Clients
@@ -1095,9 +1129,11 @@
       gstin: c.gst || '',
       default_rent: c.defaultRent || 'Rent',
       rent_amount: c.rentAmount !== undefined && c.rentAmount !== '' ? parseFloat(c.rentAmount) : null,
-      remarks: c.remarks || ''
+      taxable_amount: c.taxableAmount !== undefined && c.taxableAmount !== '' ? parseFloat(c.taxableAmount) : null,
+      remarks: c.remarks || '',
+      updated_at: new Date().toISOString()
     }));
-    await upsertInChunks('monthly_clients', monthlyClientRows);
+    await upsertInChunks('gst_monthly_clients', monthlyClientRows);
 
     if (typeof onProgress === 'function') onProgress('Syncing 756 Monthly Filings...', 45);
     // 6. Monthly Filings
@@ -1120,11 +1156,12 @@
           gstr3b: f.gstr3b || 'Pending',
           gstr3b_arn: f.gstr3bArn || '',
           gstr3b_date: f.gstr3bDate || '',
-          remarks: f.remarks || ''
+          remarks: f.remarks || '',
+          updated_at: new Date().toISOString()
         });
       }
     }
-    await upsertInChunks('monthly_filings', monthlyFilingRows);
+    await upsertInChunks('gst_monthly_filings', monthlyFilingRows);
 
     if (typeof onProgress === 'function') onProgress('Syncing 62 QRMP Companies...', 65);
     // 7. QRMP Clients
@@ -1136,9 +1173,11 @@
       gstin: c.gst || '',
       default_rent: c.defaultRent || 'Rent',
       rent_amount: c.rentAmount !== undefined && c.rentAmount !== '' ? parseFloat(c.rentAmount) : null,
-      remarks: c.remarks || ''
+      taxable_amount: c.taxableAmount !== undefined && c.taxableAmount !== '' ? parseFloat(c.taxableAmount) : null,
+      remarks: c.remarks || '',
+      updated_at: new Date().toISOString()
     }));
-    await upsertInChunks('qrmp_clients', qrmpClientRows);
+    await upsertInChunks('gst_qrmp_clients', qrmpClientRows);
 
     if (typeof onProgress === 'function') onProgress('Syncing 620 QRMP Filings...', 80);
     // 8. QRMP Filings
@@ -1166,11 +1205,12 @@
           gstr3b_arn: f.gstr3bArn || '',
           gstr3b_date: f.gstr3bDate || '',
           taxable_amount: f.taxableAmount !== undefined && f.taxableAmount !== '' ? parseFloat(f.taxableAmount) : null,
-          remarks: f.remarks || ''
+          remarks: f.remarks || '',
+          updated_at: new Date().toISOString()
         });
       }
     }
-    await upsertInChunks('qrmp_filings', qrmpFilingRows);
+    await upsertInChunks('gst_qrmp_filings', qrmpFilingRows);
 
     if (typeof onProgress === 'function') onProgress('Syncing 23 Composition Dealers...', 90);
     // 9. Composition Clients
@@ -1184,9 +1224,10 @@
       tax_rate: c.taxRate || '1%',
       default_rent: c.defaultRent || 'Rent',
       rent_amount: c.rentAmount !== undefined && c.rentAmount !== '' ? parseFloat(c.rentAmount) : null,
-      remarks: c.remarks || ''
+      remarks: c.remarks || '',
+      updated_at: new Date().toISOString()
     }));
-    await upsertInChunks('composition_clients', compClientRows);
+    await upsertInChunks('gst_composition_clients', compClientRows);
 
     if (typeof onProgress === 'function') onProgress('Syncing 92 Composition Filings...', 96);
     // 10. Composition Filings
@@ -1213,14 +1254,314 @@
           gstr4_date: f.gstr4Date || '',
           taxable_turnover: f.taxableTurnover !== undefined && f.taxableTurnover !== '' ? parseFloat(f.taxableTurnover) : null,
           tax_amount: f.taxAmount !== undefined && f.taxAmount !== '' ? parseFloat(f.taxAmount) : null,
-          remarks: f.remarks || ''
+          remarks: f.remarks || '',
+          updated_at: new Date().toISOString()
         });
       }
     }
-    await upsertInChunks('composition_filings', compFilingRows);
+    await upsertInChunks('gst_composition_filings', compFilingRows);
 
     if (typeof onProgress === 'function') onProgress('✓ 100% Complete! All 148 clients & 1,468 filings pushed to Supabase tables.', 100);
     return true;
+  }
+
+  // --- AUTOMATIC TABLE SEEDING CHECK ---
+  async function checkAndAutoSeedRelationalTables() {
+    if (!supabase || !cachedState) return;
+    try {
+      const { count, error } = await supabase
+        .from('gst_monthly_clients')
+        .select('id', { count: 'exact', head: true });
+
+      const clientTarget = (cachedState.clients || []).length || 63;
+      if (!error && (count === null || count === 0 || count < clientTarget)) {
+        console.log('[Supabase Sync] Relational tables empty or incomplete. Running initial auto-sync...');
+        await syncAllToRelationalTables();
+        console.log('[Supabase Sync] All separate relational tables fully populated!');
+      }
+    } catch (e) {
+      console.warn('[Supabase Sync] Check notice:', e);
+    }
+  }
+
+  // --- SINGLE ROW SYNC HELPERS ---
+  async function syncSingleMonthlyFiling(month, clientId, current) {
+    if (!supabase) return;
+    try {
+      const row = {
+        id: month + '_' + clientId,
+        month_name: month,
+        client_id: clientId,
+        client_name: current.name || '',
+        rent: current.rent || '',
+        rent_amount: current.rentAmount !== undefined && current.rentAmount !== '' ? parseFloat(current.rentAmount) : null,
+        suggested_rent_amount: current.suggestedRentAmount !== undefined && current.suggestedRentAmount !== '' ? parseFloat(current.suggestedRentAmount) : null,
+        taxable_amount: current.taxableAmount !== undefined && current.taxableAmount !== '' ? parseFloat(current.taxableAmount) : null,
+        gstr1: current.gstr1 || 'Pending',
+        gstr1_arn: current.gstr1Arn || '',
+        gstr1_date: current.gstr1Date || '',
+        gstr3b: current.gstr3b || 'Pending',
+        gstr3b_arn: current.gstr3bArn || '',
+        gstr3b_date: current.gstr3bDate || '',
+        remarks: current.remarks || '',
+        updated_at: new Date().toISOString()
+      };
+      await supabase.from('gst_monthly_filings').upsert(row);
+    } catch (err) {
+      console.warn('[Supabase Sync] Warning updating monthly filing:', err);
+    }
+  }
+
+  async function syncSingleQrmpFiling(quarter, clientId, current) {
+    if (!supabase) return;
+    try {
+      const row = {
+        id: quarter + '_' + clientId,
+        quarter_name: quarter,
+        client_id: clientId,
+        client_name: current.name || '',
+        rent: current.rent || '',
+        rent_amount: current.rentAmount !== undefined && current.rentAmount !== '' ? parseFloat(current.rentAmount) : null,
+        m1_gstr1: current.m1Gstr1 || 'Pending',
+        m1_gstr1_arn: current.m1Gstr1Arn || '',
+        m1_gstr1_date: current.m1Gstr1Date || '',
+        m2_gstr1: current.m2Gstr1 || 'Pending',
+        m2_gstr1_arn: current.m2Gstr1Arn || '',
+        m2_gstr1_date: current.m2Gstr1Date || '',
+        m3_gstr1: current.m3Gstr1 || 'Pending',
+        m3_gstr1_arn: current.m3Gstr1Arn || '',
+        m3_gstr1_date: current.m3Gstr1Date || '',
+        gstr3b: current.gstr3b || 'Pending',
+        gstr3b_arn: current.gstr3bArn || '',
+        gstr3b_date: current.gstr3bDate || '',
+        taxable_amount: current.taxableAmount !== undefined && current.taxableAmount !== '' ? parseFloat(current.taxableAmount) : null,
+        remarks: current.remarks || '',
+        updated_at: new Date().toISOString()
+      };
+      await supabase.from('gst_qrmp_filings').upsert(row);
+    } catch (err) {
+      console.warn('[Supabase Sync] Warning updating QRMP filing:', err);
+    }
+  }
+
+  async function syncSingleCompositionFiling(quarter, clientId, current) {
+    if (!supabase) return;
+    try {
+      const row = {
+        id: quarter + '_' + clientId,
+        quarter_name: quarter,
+        client_id: clientId,
+        client_name: current.name || '',
+        rent: current.rent || '',
+        rent_amount: current.rentAmount !== undefined && current.rentAmount !== '' ? parseFloat(current.rentAmount) : null,
+        user_name: current.user || '',
+        gstin: current.gst || '',
+        category: current.category || 'Trader',
+        tax_rate: current.taxRate || '1%',
+        cmp08: current.cmp08 || 'Pending',
+        cmp08_arn: current.cmp08Arn || '',
+        cmp08_date: current.cmp08Date || '',
+        gstr4: current.gstr4 || 'Pending',
+        gstr4_arn: current.gstr4Arn || '',
+        gstr4_date: current.gstr4Date || '',
+        taxable_turnover: current.taxableTurnover !== undefined && current.taxableTurnover !== '' ? parseFloat(current.taxableTurnover) : null,
+        tax_amount: current.taxAmount !== undefined && current.taxAmount !== '' ? parseFloat(current.taxAmount) : null,
+        remarks: current.remarks || '',
+        updated_at: new Date().toISOString()
+      };
+      await supabase.from('gst_composition_filings').upsert(row);
+    } catch (err) {
+      console.warn('[Supabase Sync] Warning updating Composition filing:', err);
+    }
+  }
+
+  async function syncSingleMonthlyClient(client) {
+    if (!supabase) return;
+    try {
+      const row = {
+        id: client.id,
+        sno: client.sno || null,
+        name: client.name || '',
+        user_name: client.user || '',
+        gstin: client.gst || '',
+        default_rent: client.defaultRent || 'Rent',
+        rent_amount: client.rentAmount !== undefined && client.rentAmount !== '' ? parseFloat(client.rentAmount) : null,
+        taxable_amount: client.taxableAmount !== undefined && client.taxableAmount !== '' ? parseFloat(client.taxableAmount) : null,
+        remarks: client.remarks || '',
+        updated_at: new Date().toISOString()
+      };
+      await supabase.from('gst_monthly_clients').upsert(row);
+    } catch (err) {
+      console.warn('[Supabase Sync] Warning updating monthly client:', err);
+    }
+  }
+
+  async function syncSingleQrmpClient(client) {
+    if (!supabase) return;
+    try {
+      const row = {
+        id: client.id,
+        sno: client.sno || null,
+        name: client.name || '',
+        user_name: client.user || '',
+        gstin: client.gst || '',
+        default_rent: client.defaultRent || 'Rent',
+        rent_amount: client.rentAmount !== undefined && client.rentAmount !== '' ? parseFloat(client.rentAmount) : null,
+        taxable_amount: client.taxableAmount !== undefined && client.taxableAmount !== '' ? parseFloat(client.taxableAmount) : null,
+        remarks: client.remarks || '',
+        updated_at: new Date().toISOString()
+      };
+      await supabase.from('gst_qrmp_clients').upsert(row);
+    } catch (err) {
+      console.warn('[Supabase Sync] Warning updating QRMP client:', err);
+    }
+  }
+
+  async function syncSingleCompositionClient(client) {
+    if (!supabase) return;
+    try {
+      const row = {
+        id: client.id,
+        sno: client.sno || null,
+        name: client.name || '',
+        user_name: client.user || '',
+        gstin: client.gst || '',
+        category: client.category || 'Trader',
+        tax_rate: client.taxRate || '1%',
+        default_rent: client.defaultRent || 'Rent',
+        rent_amount: client.rentAmount !== undefined && client.rentAmount !== '' ? parseFloat(client.rentAmount) : null,
+        remarks: client.remarks || '',
+        updated_at: new Date().toISOString()
+      };
+      await supabase.from('gst_composition_clients').upsert(row);
+    } catch (err) {
+      console.warn('[Supabase Sync] Warning updating Composition client:', err);
+    }
+  }
+
+  async function deleteMonthlyClientFromDb(clientId) {
+    if (!supabase) return;
+    try {
+      await supabase.from('gst_monthly_clients').delete().eq('id', clientId);
+      await supabase.from('gst_monthly_filings').delete().eq('client_id', clientId);
+    } catch (err) {}
+  }
+
+  async function deleteQrmpClientFromDb(clientId) {
+    if (!supabase) return;
+    try {
+      await supabase.from('gst_qrmp_clients').delete().eq('id', clientId);
+      await supabase.from('gst_qrmp_filings').delete().eq('client_id', clientId);
+    } catch (err) {}
+  }
+
+  async function deleteCompositionClientFromDb(clientId) {
+    if (!supabase) return;
+    try {
+      await supabase.from('gst_composition_clients').delete().eq('id', clientId);
+      await supabase.from('gst_composition_filings').delete().eq('client_id', clientId);
+    } catch (err) {}
+  }
+
+  async function syncPeriodConfig(periodConfig) {
+    if (!supabase || !periodConfig) return;
+    try {
+      await supabase.from('gst_period_config').upsert({
+        id: 'config',
+        active_month: periodConfig.activeMonth || 'NOV 2026',
+        entered_january: Boolean(periodConfig.enteredJanuary),
+        updated_at: new Date().toISOString()
+      });
+    } catch (err) {}
+  }
+
+  async function syncMonthFilingsBatch(monthName, monthFilings) {
+    if (!supabase || !monthFilings) return;
+    const rows = [];
+    for (const cId in monthFilings) {
+      const f = monthFilings[cId];
+      rows.push({
+        id: monthName + '_' + cId,
+        month_name: monthName,
+        client_id: cId,
+        client_name: f.name || '',
+        rent: f.rent || '',
+        rent_amount: f.rentAmount !== undefined && f.rentAmount !== '' ? parseFloat(f.rentAmount) : null,
+        suggested_rent_amount: f.suggestedRentAmount !== undefined && f.suggestedRentAmount !== '' ? parseFloat(f.suggestedRentAmount) : null,
+        taxable_amount: f.taxableAmount !== undefined && f.taxableAmount !== '' ? parseFloat(f.taxableAmount) : null,
+        gstr1: f.gstr1 || 'Pending',
+        gstr1_arn: f.gstr1Arn || '',
+        gstr1_date: f.gstr1Date || '',
+        gstr3b: f.gstr3b || 'Pending',
+        gstr3b_arn: f.gstr3bArn || '',
+        gstr3b_date: f.gstr3bDate || '',
+        remarks: f.remarks || '',
+        updated_at: new Date().toISOString()
+      });
+    }
+    await upsertInChunks('gst_monthly_filings', rows);
+  }
+
+  async function syncQuarterFilingsBatch(scheme, quarterName, quarterFilings) {
+    if (!supabase || !quarterFilings) return;
+    if (scheme === 'qrmp') {
+      const rows = [];
+      for (const cId in quarterFilings) {
+        const f = quarterFilings[cId];
+        rows.push({
+          id: quarterName + '_' + cId,
+          quarter_name: quarterName,
+          client_id: cId,
+          client_name: f.name || '',
+          rent: f.rent || '',
+          rent_amount: f.rentAmount !== undefined && f.rentAmount !== '' ? parseFloat(f.rentAmount) : null,
+          m1_gstr1: f.m1Gstr1 || 'Pending',
+          m1_gstr1_arn: f.m1Gstr1Arn || '',
+          m1_gstr1_date: f.m1Gstr1Date || '',
+          m2_gstr1: f.m2Gstr1 || 'Pending',
+          m2_gstr1_arn: f.m2Gstr1Arn || '',
+          m2_gstr1_date: f.m2Gstr1Date || '',
+          m3_gstr1: f.m3Gstr1 || 'Pending',
+          m3_gstr1_arn: f.m3Gstr1Arn || '',
+          m3_gstr1_date: f.m3Gstr1Date || '',
+          gstr3b: f.gstr3b || 'Pending',
+          gstr3b_arn: f.gstr3bArn || '',
+          gstr3b_date: f.gstr3bDate || '',
+          taxable_amount: f.taxableAmount !== undefined && f.taxableAmount !== '' ? parseFloat(f.taxableAmount) : null,
+          remarks: f.remarks || '',
+          updated_at: new Date().toISOString()
+        });
+      }
+      await upsertInChunks('gst_qrmp_filings', rows);
+    } else if (scheme === 'composition') {
+      const rows = [];
+      for (const cId in quarterFilings) {
+        const f = quarterFilings[cId];
+        rows.push({
+          id: quarterName + '_' + cId,
+          quarter_name: quarterName,
+          client_id: cId,
+          client_name: f.name || '',
+          rent: f.rent || '',
+          rent_amount: f.rentAmount !== undefined && f.rentAmount !== '' ? parseFloat(f.rentAmount) : null,
+          user_name: f.user || '',
+          gstin: f.gst || '',
+          category: f.category || 'Trader',
+          tax_rate: f.taxRate || '1%',
+          cmp08: f.cmp08 || 'Pending',
+          cmp08_arn: f.cmp08Arn || '',
+          cmp08_date: f.cmp08Date || '',
+          gstr4: f.gstr4 || 'Pending',
+          gstr4_arn: f.gstr4Arn || '',
+          gstr4_date: f.gstr4Date || '',
+          taxable_turnover: f.taxableTurnover !== undefined && f.taxableTurnover !== '' ? parseFloat(f.taxableTurnover) : null,
+          tax_amount: f.taxAmount !== undefined && f.taxAmount !== '' ? parseFloat(f.taxAmount) : null,
+          remarks: f.remarks || '',
+          updated_at: new Date().toISOString()
+        });
+      }
+      await upsertInChunks('gst_composition_filings', rows);
+    }
   }
 
   function downloadJsonBackup() {

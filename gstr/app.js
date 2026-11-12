@@ -839,13 +839,12 @@
 
   async function updateQrmpFiling(clientId, updates) {
     try {
-      const res = await fetch(`/api/qrmp/filings/${encodeURIComponent(currentQrmpQuarter)}/${encodeURIComponent(clientId)}`, {
+      const data = await apiFetch(`/api/qrmp/filings/${encodeURIComponent(currentQrmpQuarter)}/${encodeURIComponent(clientId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
       });
-      const data = await res.json();
-      if (data.success) {
+      if (data && data.success) {
         const item = allQrmpFilings.find(f => f.id === clientId);
         if (item) {
           Object.assign(item, updates);
@@ -1094,9 +1093,8 @@
 
   async function deleteQrmpShop(clientId, shopName) {
     try {
-      const res = await fetch(`/api/qrmp/clients/${encodeURIComponent(clientId)}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
+      const data = await apiFetch(`/api/qrmp/clients/${encodeURIComponent(clientId)}`, { method: 'DELETE' });
+      if (data && data.success) {
         allQrmpFilings = allQrmpFilings.filter(f => f.id !== clientId);
         allQrmpFilings.forEach((f, idx) => { f.sno = idx + 1; });
         qrmpSelectedIds.delete(clientId);
@@ -1137,13 +1135,12 @@
 
   async function updateCompositionFiling(clientId, updates) {
     try {
-      const res = await fetch(`/api/composition/filings/${encodeURIComponent(currentCompositionQuarter)}/${encodeURIComponent(clientId)}`, {
+      const data = await apiFetch(`/api/composition/filings/${encodeURIComponent(currentCompositionQuarter)}/${encodeURIComponent(clientId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
       });
-      const data = await res.json();
-      if (data.success) {
+      if (data && data.success) {
         const item = allCompositionFilings.find(f => f.id === clientId);
         if (item) {
           Object.assign(item, updates);
@@ -1356,9 +1353,8 @@
 
   async function deleteCompositionShop(clientId, shopName) {
     try {
-      const res = await fetch(`/api/composition/clients/${encodeURIComponent(clientId)}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
+      const data = await apiFetch(`/api/composition/clients/${encodeURIComponent(clientId)}`, { method: 'DELETE' });
+      if (data && data.success) {
         allCompositionFilings = allCompositionFilings.filter(f => f.id !== clientId);
         allCompositionFilings.forEach((f, idx) => { f.sno = idx + 1; });
         compositionSelectedIds.delete(clientId);
@@ -1366,7 +1362,7 @@
         updateCompositionKpis();
         showToast(`✓ Shop "${shopName}" deleted successfully from Composition`);
       } else {
-        showToast('Error: ' + (data.error || 'Failed to delete'));
+        showToast('Error: ' + (data && data.error ? data.error : 'Failed to delete'));
       }
     } catch (err) {
       showToast('Failed to delete: ' + err.message);
@@ -1376,11 +1372,10 @@
   // --- DELETE SHOP (Monthly) ---
   async function deleteShop(clientId, shopName) {
     try {
-      const res = await fetch(`/api/clients/${encodeURIComponent(clientId)}`, {
+      const data = await apiFetch(`/api/clients/${encodeURIComponent(clientId)}`, {
         method: 'DELETE'
       });
-      const data = await res.json();
-      if (data.success) {
+      if (data && data.success) {
         allFilings = allFilings.filter(f => f.id !== clientId);
         allFilings.forEach((f, idx) => { f.sno = idx + 1; });
         selectedIds.delete(clientId);
