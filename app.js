@@ -947,6 +947,8 @@ WHERE id = 'main_store';`;
     // Calling saveData() would push an empty clients array and erase the Supabase database!
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+      if (state.settings.supabaseUrl) localStorage.setItem('brt_supabase_url', state.settings.supabaseUrl);
+      if (state.settings.supabaseKey) localStorage.setItem('brt_supabase_key', state.settings.supabaseKey);
     } catch (err) {}
     saveSettingsToServer();
 
@@ -1328,6 +1330,13 @@ WHERE id = 'main_store';`;
       if (!state.settings.supabaseKey && window.SUPABASE_CONFIG.anonKey) {
         state.settings.supabaseKey = window.SUPABASE_CONFIG.anonKey.trim();
       }
+    }
+
+    if (state.settings.supabaseUrl && state.settings.supabaseKey) {
+      try {
+        localStorage.setItem('brt_supabase_url', state.settings.supabaseUrl);
+        localStorage.setItem('brt_supabase_key', state.settings.supabaseKey);
+      } catch (_) {}
     }
 
     // 2. Load clients from localStorage
@@ -6200,6 +6209,11 @@ WHERE id = 'main_store';`;
 
   // Expose methods to global app namespace
   window.app = {
+    getSupabaseConfig: () => {
+      const url = (state.settings.supabaseUrl || (typeof SUPABASE_CONFIG !== 'undefined' ? SUPABASE_CONFIG.url : '') || '').trim();
+      const key = (state.settings.supabaseKey || (typeof SUPABASE_CONFIG !== 'undefined' ? SUPABASE_CONFIG.anonKey : '') || '').trim();
+      return { url, key, isConfigured: Boolean(url && key) };
+    },
     handleLogin,
     handleLogout,
     quickFillLogin,

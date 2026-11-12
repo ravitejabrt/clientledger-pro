@@ -107,28 +107,50 @@
 
   // --- CREDENTIALS MANAGEMENT ---
   function getCredentials() {
-    const storedUrl = localStorage.getItem('brt_supabase_url');
-    const storedKey = localStorage.getItem('brt_supabase_key');
+    let storedUrl = localStorage.getItem('brt_supabase_url');
+    let storedKey = localStorage.getItem('brt_supabase_key');
     let configUrl = (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url) ? window.SUPABASE_CONFIG.url.trim() : '';
     let configKey = (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.anonKey) ? window.SUPABASE_CONFIG.anonKey.trim() : '';
 
-    // If embedded inside parent app, inherit credentials automatically
+    // Check parent window & local storage to inherit Supabase credentials automatically
     try {
-      if ((!configUrl || !configKey) && window.parent && window.parent !== window) {
-        if (window.parent.SUPABASE_CONFIG) {
-          if (!configUrl) configUrl = (window.parent.SUPABASE_CONFIG.url || '').trim();
-          if (!configKey) configKey = (window.parent.SUPABASE_CONFIG.anonKey || '').trim();
-        }
-        if (!storedUrl && window.parent.localStorage) {
-          const parentStored = window.parent.localStorage.getItem('clientledger_supabase_config');
-          if (parentStored) {
-            const p = JSON.parse(parentStored);
-            if (!configUrl) configUrl = (p.url || '').trim();
-            if (!configKey) configKey = (p.anonKey || '').trim();
-          }
-        }
+      // 1. Inherit from parent SUPABASE_CONFIG
+      if ((!configUrl || !configKey) && window.parent && window.parent.SUPABASE_CONFIG) {
+        if (!configUrl) configUrl = (window.parent.SUPABASE_CONFIG.url || '').trim();
+        if (!configKey) configKey = (window.parent.SUPABASE_CONFIG.anonKey || '').trim();
       }
-    } catch (_) {}
+
+      // 2. Inherit from clientledger_pro_settings_v1
+      const storageSources = [localStorage];
+      try {
+        if (window.parent && window.parent !== window && window.parent.localStorage) {
+          storageSources.push(window.parent.localStorage);
+        }
+      } catch (_) {}
+
+      for (const st of storageSources) {
+        if (!st) continue;
+        const rawSettings = st.getItem('clientledger_pro_settings_v1');
+        if (rawSettings) {
+          try {
+            const p = JSON.parse(rawSettings);
+            if (!configUrl && p.supabaseUrl) configUrl = p.supabaseUrl.trim();
+            if (!configKey && p.supabaseKey) configKey = p.supabaseKey.trim();
+          } catch (_) {}
+        }
+        if (!storedUrl) storedUrl = st.getItem('brt_supabase_url');
+        if (!storedKey) storedKey = st.getItem('brt_supabase_key');
+      }
+
+      // 3. Inherit directly from window.parent.app
+      if ((!configUrl || !configKey) && window.parent && window.parent.app && typeof window.parent.app.getSupabaseConfig === 'function') {
+        const pCfg = window.parent.app.getSupabaseConfig();
+        if (!configUrl && pCfg.url) configUrl = pCfg.url.trim();
+        if (!configKey && pCfg.key) configKey = pCfg.key.trim();
+      }
+    } catch (e) {
+      console.warn('[Credentials] Parent read notice:', e);
+    }
 
     const url = storedUrl || configUrl;
     const anonKey = storedKey || configKey;
@@ -828,33 +850,12 @@
 
   // --- UI BADGE & SETTINGS MODAL ---
   function updateUiBadge(isConfigured, isLive) {
+    // Hide the redundant Connect Cloud DB button completely (synced from top navbar)
     let badge = document.getElementById('supabaseStatusBadge');
-    if (!badge) {
-      badge = document.createElement('button');
-      badge.id = 'supabaseStatusBadge';
-      badge.className = 'btn btn-sm btn-supabase-status';
-      badge.type = 'button';
-      badge.title = 'Click to configure or view Supabase Cloud Database settings';
-
-      // Insert into top navigation bar
-      const navRight = document.querySelector('.nav-right');
-      if (navRight) {
-        navRight.insertBefore(badge, navRight.firstChild);
-      }
+    if (badge) {
+      badge.style.display = 'none';
+      badge.remove();
     }
-
-    if (isConfigured && isLive) {
-      badge.innerHTML = '<span class="status-indicator-dot dot-live"></span><span class="badge-label">🟢 Supabase Live</span>';
-      badge.className = 'btn btn-sm btn-supabase-status status-connected';
-    } else if (isConfigured && !isLive) {
-      badge.innerHTML = '<span class="status-indicator-dot dot-sync"></span><span class="badge-label">🟡 Connecting Cloud...</span>';
-      badge.className = 'btn btn-sm btn-supabase-status status-pending';
-    } else {
-      badge.innerHTML = '<span class="status-indicator-dot dot-offline"></span><span class="badge-label">☁️ Connect Cloud DB</span>';
-      badge.className = 'btn btn-sm btn-supabase-status status-setup';
-    }
-
-    badge.onclick = openSettingsModal;
   }
 
   function openSettingsModal() {

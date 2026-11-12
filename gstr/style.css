@@ -2355,3 +2355,9 @@ body {
 .status-indicator-dot.dot-offline {
   background: #3b82f6;
 }
+
+/* Hide redundant Connect Cloud DB button */
+#supabaseStatusBadge,
+.btn-supabase-status {
+  display: none !important;
+}
