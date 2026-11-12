@@ -151,7 +151,8 @@
 
   // Safe API helper that validates JSON and provides actionable server restart messages
   async function apiFetch(endpoint, options = {}) {
-    if (window.BRT_SUPABASE && window.BRT_SUPABASE.isConfigured()) {
+    // If Supabase is configured OR running on a static host (GitHub Pages, file://) where no Node server exists:
+    if (window.BRT_SUPABASE && (window.BRT_SUPABASE.isConfigured() || window.location.hostname.includes('github.io') || window.location.protocol === 'file:')) {
       try {
         return await window.BRT_SUPABASE.handleApiRequest(endpoint, options);
       } catch (err) {
