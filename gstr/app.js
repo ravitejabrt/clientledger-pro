@@ -245,7 +245,7 @@
     // Update Header labels & Subtitles
     if (scheme === 'monthly') {
       periodSelectLabel.textContent = 'Return Period:';
-      appSubtitle.textContent = 'Regular Monthly Filings (GSTR-1 & GSTR-3B) • Commercial Rent Compliance';
+      if (appSubtitle) { appSubtitle.textContent = ''; appSubtitle.style.display = 'none'; }
       btnRolloverText.textContent = 'Month Rollover';
       if (btnCopyPrevDataText) btnCopyPrevDataText.textContent = 'Copy Prev Month';
       if (btnCopyPrevData) btnCopyPrevData.style.display = 'inline-flex';
@@ -253,7 +253,7 @@
       if (allFilings.length === 0) fetchFilings(currentMonth);
     } else if (scheme === 'qrmp') {
       periodSelectLabel.textContent = 'Return Quarter:';
-      appSubtitle.textContent = 'QRMP Scheme • Quarterly Filings (M1, M2, M3 Compulsory GSTR-1 & Quarterly 3B)';
+      if (appSubtitle) { appSubtitle.textContent = ''; appSubtitle.style.display = 'none'; }
       btnRolloverText.textContent = 'Quarter Rollover';
       if (btnCopyPrevDataText) btnCopyPrevDataText.textContent = 'Copy Prev Quarter';
       if (btnCopyPrevData) btnCopyPrevData.style.display = 'inline-flex';
@@ -272,7 +272,7 @@
       }
     } else if (scheme === 'composition') {
       periodSelectLabel.textContent = 'Return Quarter:';
-      appSubtitle.textContent = 'Composition Scheme • CMP-08 Quarterly Statements & Annual GSTR-4';
+      if (appSubtitle) { appSubtitle.textContent = ''; appSubtitle.style.display = 'none'; }
       btnRolloverText.textContent = 'Quarter Rollover';
       if (btnCopyPrevDataText) btnCopyPrevDataText.textContent = 'Copy Prev Quarter';
       if (btnCopyPrevData) btnCopyPrevData.style.display = 'inline-flex';

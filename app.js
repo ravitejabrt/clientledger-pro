@@ -1451,6 +1451,17 @@ WHERE id = 'main_store';`;
     const activeEl = document.getElementById(`view-${viewName}`);
     if (activeEl) activeEl.classList.remove('hidden');
 
+    // Toggle full-width view for GSTR vs standard container for other views
+    const mainContainer = document.getElementById('main-content-container');
+    const footerEl = document.getElementById('app-footer');
+    if (viewName === 'gstr') {
+      if (mainContainer) mainContainer.classList.add('hidden');
+      if (footerEl) footerEl.classList.add('hidden');
+    } else {
+      if (mainContainer) mainContainer.classList.remove('hidden');
+      if (footerEl) footerEl.classList.remove('hidden');
+    }
+
     // Update top nav active states
     const navDashboard = document.getElementById('nav-dashboard');
     const navClients = document.getElementById('nav-clients');

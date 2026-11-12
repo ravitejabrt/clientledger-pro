@@ -301,7 +301,7 @@
   </header>
 
   <!-- Main Content Container -->
-  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+  <main id="main-content-container" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
     <!-- VIEW 1: DASHBOARD -->
     <div id="view-dashboard" class="space-y-6">
@@ -1079,15 +1079,15 @@
 
     </div>
 
-    <!-- VIEW 6: GSTR (Rahul 3B GST Returns & Rent Compliance Tracker) -->
-    <div id="view-gstr" class="hidden -mx-4 sm:-mx-6 lg:-mx-8 -my-6 bg-slate-100 rounded-b-2xl overflow-hidden">
-      <iframe id="gstr-frame" src="gstr/index.html" class="w-full border-0" style="height: calc(100vh - 65px); min-height: 850px;" title="BRT GST Returns & Rent Compliance Tracker"></iframe>
-    </div>
-
   </main>
 
+  <!-- VIEW 6: GSTR (GST Returns & Compliance Tracker - 100% Full Screen Width) -->
+  <div id="view-gstr" class="hidden w-full flex-1 bg-slate-100" style="min-height: calc(100vh - 65px);">
+    <iframe id="gstr-frame" src="gstr/index.html" class="w-full border-0 block" style="width: 100%; height: calc(100vh - 65px); min-height: 900px;" title="GST Returns & Compliance Tracker"></iframe>
+  </div>
+
   <!-- FOOTER -->
-  <footer class="bg-white border-t border-slate-200 py-4 mt-8 no-print text-center text-xs text-slate-400">
+  <footer id="app-footer" class="bg-white border-t border-slate-200 py-4 mt-8 no-print text-center text-xs text-slate-400">
     <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
       <p>ClientLedger Pro &bull; <span id="footer-sync-status">Local Storage Mode</span> &bull; Secured Browser Accounting</p>
       <div class="flex items-center gap-3">
